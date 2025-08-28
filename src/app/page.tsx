@@ -1,11 +1,11 @@
 import Link from "next/link";
 
 import { LatestPost } from "~/app/_components/post";
+import { SignInCard } from "./_components/SignInCard";
 import { auth } from "~/server/auth";
 import { api, HydrateClient } from "~/trpc/server";
 
 export default async function Home() {
-  const hello = await api.post.hello({ text: "from tRPC" });
   const session = await auth();
 
   if (session?.user) {
@@ -14,24 +14,33 @@ export default async function Home() {
 
   return (
     <HydrateClient>
-      <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-[#2e026d] to-[#15162c] text-white">
-        <div className="container flex flex-col items-center justify-center gap-12 px-4 py-16">
-          <div className="flex flex-col items-center gap-2">
-            <div className="flex flex-col items-center justify-center gap-4">
-              <p className="text-center text-2xl text-white">
-                {session && <span>Logged in as {session.user?.name}</span>}
-              </p>
+      <main className="flex min-h-screen items-center justify-center bg-gray-50">
+        {!session?.user ? (
+          <SignInCard />
+        ) : (
+          <div className="mx-auto w-full max-w-md rounded-xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+            <h2 className="text-xl font-semibold text-gray-900">
+              Welcome, {session.user.name ?? "there"} 👋
+            </h2>
+            <p className="mt-2 text-sm text-gray-600">
+              You’re logged in. Jump into your bases.
+            </p>
+            <div className="mt-6 flex items-center justify-center gap-3">
               <Link
-                href={session ? "/api/auth/signout" : "/api/auth/signin"}
-                className="rounded-full bg-white/10 px-10 py-3 font-semibold no-underline transition hover:bg-white/20"
+                href="/app" 
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
               >
-                {session ? "Sign out" : "Sign in"}
+                Open App
+              </Link>
+              <Link
+                href="/api/auth/signout"
+                className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Sign out
               </Link>
             </div>
           </div>
-
-          {session?.user && <LatestPost />}
-        </div>
+        )}
       </main>
     </HydrateClient>
   );
