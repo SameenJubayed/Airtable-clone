@@ -1,4 +1,4 @@
-// import Link from "next/link";
+import Link from "next/link";
 import { SignInCard } from "./_components/SignInCard";
 import { auth } from "~/server/auth";
 import { api, HydrateClient } from "~/trpc/server";
@@ -32,12 +32,12 @@ export default async function Home() {
           </div>
 
           <div className="flex items-center gap-3">
-            <a
+            <Link
               href="/api/auth/signout"
               className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm hover:bg-gray-50"
             >
               Sign out
-            </a>
+            </Link>
           </div>
         </header>
 
