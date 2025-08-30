@@ -15,7 +15,7 @@ export function Header() {
         <button
           aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
           onClick={() => setSidebarOpen((v) => !v)}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-white text-gray-600 hover:bg-gray-50"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-white text-gray-600 hover:bg-gray-50 hover:hand"
         >
           {/* hamburger / collapse icon */}
           <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
@@ -30,7 +30,7 @@ export function Header() {
       </div>
 
       {/* Center: search bar */}
-      <div className="mx-auto w-full items-center justify-center md:flex">
+      <div className="mx-auto w-full items-center justify-center md:flex hover:pointer">
         <div className="flex w-full max-w-[354px] items-center rounded-full border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-600 shadow-sm">
           <svg viewBox="0 0 24 24" className="mr-2 h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="11" cy="11" r="7" />

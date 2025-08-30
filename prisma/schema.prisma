@@ -1,6 +1,8 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
+// ---------- GENERATORS / DATASOURCE ----------
+
 generator client {
     provider = "prisma-client-js"
 }
@@ -10,16 +12,101 @@ datasource db {
     url      = env("DATABASE_URL")
 }
 
-model Post {
-    id        Int      @id @default(autoincrement())
-    name      String
+// ---------- FIELD TYPES ----------
+
+enum FieldType {
+  TEXT
+  NUMBER
+}
+
+// ---------- CORE APP MODELS ----------
+
+model Base {
+    id          String   @id @default(cuid())
+    name        String   @default("Untitled Base")
+
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+
+    createdById String 
+    createdBy   User     @relation("UserBases", fields: [createdById], references: [id])
+
+    tables      Table[]  // A "Base" contains many tables
+
+    @@index([name])
+    @@index([createdById, updatedAt])
+}
+
+model Table {
+    id        String   @id @default(cuid())
+    baseId    String
+    base      Base     @relation(fields: [baseId], references: [id], onDelete: Cascade)
+
+    name      String   @default("Untitled Table")
+    position  Int      @default(0)
+
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
 
-    createdBy   User   @relation(fields: [createdById], references: [id])
-    createdById String
+    columns   Column[]
+    rows      Row[]
 
-    @@index([name])
+    @@unique([baseId, name]) // unique table name inside a base
+    @@index([baseId, position])
+    @@map("app_table")      // avoid potential conflicts with reserved identifiers
+}
+
+model Column {
+    id        String    @id @default(cuid())
+    tableId   String
+    table     Table     @relation(fields: [tableId], references: [id], onDelete: Cascade)
+
+    name      String
+    type      FieldType
+    position  Int       @default(0) // for left→right ordering
+
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+
+    cells     Cell[]
+
+    @@unique([tableId, name])   // unique column name per table
+    @@index([tableId, position])
+}
+
+model Row {
+    id        String   @id @default(cuid())
+    tableId   String
+    table     Table    @relation(fields: [tableId], references: [id], onDelete: Cascade)
+
+    position  Int      @default(0) // for top→down ordering
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    cells     Cell[]
+
+    @@index([tableId, position])
+}
+
+model Cell {
+    rowId     String
+    columnId  String
+
+    row       Row    @relation(fields: [rowId], references: [id], onDelete: Cascade)
+    column    Column @relation(fields: [columnId], references: [id], onDelete: Cascade)
+
+    // only supporting TEXT/NUMBER
+    textValue   String?
+    numberValue Float?
+
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@id([rowId, columnId])          // composite PK ensures 1 cell per (row, column)
+    @@index([columnId])
+    @@index([textValue])
+    @@index([numberValue])
 }
 
 // Necessary for Next auth
@@ -58,7 +145,7 @@ model User {
     image         String?
     accounts      Account[]
     sessions      Session[]
-    posts         Post[]
+    bases         Base[]    @relation("UserBases")
 }
 
 model VerificationToken {
@@ -68,3 +155,4 @@ model VerificationToken {
 
     @@unique([identifier, token])
 }
+ 

@@ -19,7 +19,7 @@ export function SignInCard() {
       </p>
 
       <button
-        onClick={() => signIn("google")}
+        onClick={() => signIn("google", { callbackUrl: "/dashboard", redirect: true })}
         className="mt-6 inline-flex w-full items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50"
       >
         <Image src="/google.svg" alt="Logo" width={22} height={22} className="mr-3"/>
