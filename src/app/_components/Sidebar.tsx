@@ -48,7 +48,6 @@ function SidebarContent({ pathname, onHoverChange }: SidebarContentProps) {
                 component={Link}
                 href={item.href}
                 selected={selected}
-                onClick={() => onHoverChange(false)}
                 dense
                 sx={{
                   px: 1.25,
