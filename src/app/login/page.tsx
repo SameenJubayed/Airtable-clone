@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function LoginPage() {
   const session = await auth();
-  if (session?.user) redirect("/dashboard");
+  if (session?.user) redirect("/home");
   return (
     <main className="flex min-h-screen items-center justify-center bg-gray-50">
       <SignInCard />

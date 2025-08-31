@@ -1,31 +1,37 @@
 "use client";
 
+import { IconButton, Tooltip } from "@mui/material";
+import MenuIcon from "@mui/icons-material/Menu";
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
-// import { signOut } from "next-auth/react"; 
 
-export function Header() {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+type HeaderProps = {
+  persistentOpen: boolean;
+  onTogglePersistent: () => void;
+};
 
+export function Header({ persistentOpen, onTogglePersistent }: HeaderProps) {
+  const label = persistentOpen ? "Collapse sidebar" : "Expand sidebar";
+  
   return (
-    <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b border-gray-200 bg-white/95 px-3 backdrop-blur">
+    <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b border-gray-200 bg-white/95 px-3 backdrop-blur shadow-xs">
       {/* Left: sidebar toggle + logo */}
       <div className="flex min-w-0 items-center gap-2">
-        <button
-          aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
-          onClick={() => setSidebarOpen((v) => !v)}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md bg-white text-gray-600 hover:bg-gray-50 hover:hand"
-        >
-          {/* hamburger / collapse icon */}
-          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
+        <Tooltip title={label}>
+          <IconButton
+            aria-label={label}
+            onClick={onTogglePersistent}
+            size="small"
+          >
+            <MenuIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
 
         {/* Airtable lgo */}
         <div className="flex items-center gap-2">
-          <Image src="/airtable-vector.svg" alt="Airtable" width={150} height={50} priority />
+          <Link href="/home">
+            <Image src="/airtable-vector.svg" alt="Airtable" width={155} height={50} priority />
+          </Link>
         </div>
       </div>
 
