@@ -6,7 +6,7 @@ export const tableRouter = createTRPCRouter({
   listByBase: protectedProcedure
     .input(z.object({ baseId: z.string().cuid() }))
     .query(async ({ input, ctx }) => {
-      // ensure ownership
+      // ensure ownership via session id
       await ctx.db.base.findFirstOrThrow({
         where: { id: input.baseId, createdById: ctx.session.user.id },
       });
