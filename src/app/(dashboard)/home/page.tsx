@@ -9,8 +9,12 @@ export default async function DashboardPage() {
   return (
     <>
       <h1 className="mb-4 text-2xl font-semibold">Home</h1>
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-8">
         <CreateBaseCard />
+      </section>
+      <h1 className="mb-4 text-lg font-semibold">Recently Opened</h1>
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-8">
+        {/* Base cards */}
       </section>
     </>
   );
