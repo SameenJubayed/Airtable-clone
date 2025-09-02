@@ -8,6 +8,7 @@ export default async function Page() {
   return (
     <>
       <h1 className="mb-4 text-2xl font-semibold">Workshops</h1>
+      <div className="text-sm text-gray-500">Only the one workspace buddy move along.</div>
     </>
   );
 }

@@ -8,6 +8,7 @@ export default async function Page() {
   return (
     <>
       <h1 className="mb-4 text-2xl font-semibold">Shared</h1>
+      <div className="text-sm text-gray-500">No shared bases yet (or ever!).</div>
     </>
   );
 }
