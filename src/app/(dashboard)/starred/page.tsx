@@ -1,5 +1,7 @@
+// app/(dashboard)/starred/page.tsx
 import { auth } from "~/server/auth";
 import { redirect } from "next/navigation";
+import StarredList from "./StarredList";
 
 export default async function Page() {
   const session = await auth();
@@ -8,6 +10,7 @@ export default async function Page() {
   return (
     <>
       <h1 className="mb-4 text-2xl font-semibold">Starred</h1>
+      <StarredList />
     </>
   );
 }
