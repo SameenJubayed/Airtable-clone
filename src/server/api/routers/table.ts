@@ -34,18 +34,20 @@ export const tableRouter = createTRPCRouter({
         select: { id: true },
       });
 
+      // append position for the new table
+      const position = await ctx.db.table.count({ where: { baseId: base.id } })
+
       // create the new Table inside that base
       const table = await ctx.db.table.create({
-        data: { baseId: base.id, name: input.name },
+        data: { baseId: base.id, name: input.name, position },
         select: { id: true },
       });
 
       // Create default columns (position = left→right)
-      const defaultNames = ["Name", "Amount", "Notes", "Status"];
       await ctx.db.column.createMany({
         data: Array.from({ length: input.defaultCols }).map((_, idx) => ({
           tableId: table.id,
-          name: defaultNames[idx] ?? `Column ${idx + 1}`,
+          name: `Column ${idx + 1}`,
           // e.g. column 2 = NUMBER, others = TEXT
           type: idx === 1 ? "NUMBER" : "TEXT",
           position: idx,

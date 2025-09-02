@@ -91,15 +91,15 @@ export const columnRouter = createTRPCRouter({
       await ctx.db.$transaction(async (tx) => {
         await tx.column.update({ where: { id: col.id }, data: { type: input.type } });
         if (input.type === "TEXT") {
-          await tx.$executeRawUnsafe(
-            `UPDATE "Cell" SET "numberValue" = NULL WHERE "columnId" = $1`,
-            col.id,
-          );
+          await tx.cell.updateMany({
+            where: { columnId: col.id },
+            data: { numberValue: null },
+          });
         } else {
-          await tx.$executeRawUnsafe(
-            `UPDATE "Cell" SET "textValue" = NULL WHERE "columnId" = $1`,
-            col.id,
-          );
+          await tx.cell.updateMany({
+            where: { columnId: col.id },
+            data: { textValue: null },
+          });
         }
       });
 
