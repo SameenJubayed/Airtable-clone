@@ -4,13 +4,17 @@ import { api } from "~/trpc/server";
 import BaseHeader from "../../baseComponents/BaseHeader";
 import BaseSidebar from "../../baseComponents/BaseSidebar";
 
-type Props = {
-  children: ReactNode;
-  params: { baseId: string };
-};
+type Params = { baseId: string };
 
-export default async function BaseLayout({ children, params }: Props) {
-  const base = await api.base.get({ baseId: params.baseId }); // auth happens in router
+export default async function BaseLayout({
+  children,
+  params,
+}: {
+  children: ReactNode;
+  params: Params | Promise<Params>;
+}) {
+  const { baseId } = await params; 
+  const base = await api.base.get({ baseId });
 
   return (
     <div className="min-h-screen bg-[#f6f7f9] text-gray-900">
