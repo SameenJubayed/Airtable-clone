@@ -4,14 +4,12 @@ import { api } from "~/trpc/server";
 import BaseHeader from "../../baseComponents/BaseHeader";
 import BaseSidebar from "../../baseComponents/BaseSidebar";
 
-type Params = { baseId: string };
-
 export default async function BaseLayout({
   children,
   params,
 }: {
   children: ReactNode;
-  params: Params | Promise<Params>;
+  params: Promise<{ baseId: string }>;
 }) {
   const { baseId } = await params; 
   const base = await api.base.get({ baseId });
