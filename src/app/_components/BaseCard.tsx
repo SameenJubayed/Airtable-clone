@@ -79,14 +79,14 @@ export function BaseCard({ id, name, updatedAt, starred = false }: Props) {
     return (s[0]?.toUpperCase() ?? "") + (s[1]?.toLowerCase() ?? "");
   }, [localName]);
 
-  const commitRename = async () => {
+  const commitRename = () => {
     const next = localName.trim();
     setEditing(false);
     if (!next || next === name) {
       setLocalName(name);
       return;
     }
-    await rename.mutateAsync({ baseId: id, name: next });
+    void rename.mutateAsync({ baseId: id, name: next });
   };
 
   const CardInner = (
@@ -141,10 +141,10 @@ export function BaseCard({ id, name, updatedAt, starred = false }: Props) {
           {[
             {
               key: "star",
-              onClick: async (e: React.MouseEvent) => { 
+              onClick: (e: React.MouseEvent) => { 
                 e.preventDefault();
                 e.stopPropagation();
-                await setStarred.mutateAsync({ baseId: id, starred: !localStarred });
+                void setStarred.mutateAsync({ baseId: id, starred: !localStarred });
               },
               icon: localStarred ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />,
               label: localStarred ? "Unstar base" : "Star base",
@@ -161,11 +161,11 @@ export function BaseCard({ id, name, updatedAt, starred = false }: Props) {
             },
             {
               key: "delete",
-              onClick: async (e: React.MouseEvent) => {
+              onClick: (e: React.MouseEvent) => {
                 e.preventDefault();
                 e.stopPropagation();
                 if (!confirm("Delete this base? This cannot be undone.")) return;
-                await del.mutateAsync({ baseId: id });
+                void del.mutateAsync({ baseId: id });
               },
               icon: <DeleteIcon fontSize="small" />,
               label: "Delete base",
