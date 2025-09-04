@@ -1,13 +1,14 @@
 // app/baseComponents/BaseGrid.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   createColumnHelper,
   flexRender,
   getCoreRowModel,
   useReactTable,
   type ColumnDef,
+  type ColumnSizingState,
 } from "@tanstack/react-table";
 import { api } from "~/trpc/react";
 import AddIcon from "@mui/icons-material/Add";
@@ -27,8 +28,24 @@ type CellRecord = {
 export default function BaseGrid({ tableId }: Props) {
   // columns 
   const columnsQ = api.column.listByTable.useQuery({ tableId });
+  useEffect(() => {
+    if (!columnsQ.data) return;
+    // only set once—don't clobber user-resized widths
+    setColumnSizing((prev) => {
+      if (Object.keys(prev).length) return prev; // already seeded
+      const seed: ColumnSizingState = {};
+      // seed data columns
+      for (const c of columnsQ.data) seed[c.id] = COL_W;
+      // seed the row-number pseudo column id (matches your ColumnDef id)
+      seed["__rownum"] = ROWNUM_W;
+      return seed;
+    });
+  }, [columnsQ.data]);
+
   // rows + cells
   const rowsQ = api.row.list.useQuery({ tableId, skip: 0, take: 200 });
+  // NEW: column sizing state (TanStack v8)
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
 
   // Adds one row at the end, on success refresh to show new row
   const createRow = api.row.create.useMutation({
@@ -79,6 +96,10 @@ export default function BaseGrid({ tableId }: Props) {
       ),
       // tell TanStack to read row[col.id] for this column's value
       accessorKey: col.id,
+      // defaul col width 180
+      size: COL_W,
+      // min possible size 60
+      minSize: 60,
 
       cell: (ctx) => {
         const rowId = ctx.row.original.rowId;
@@ -152,6 +173,7 @@ export default function BaseGrid({ tableId }: Props) {
   const rowNumCol: ColumnDef<CellRecord, unknown> = {
     id: "__rownum",
     header: () => <span className="text-gray-500">#</span>,
+    size: ROWNUM_W,
     cell: (ctx) => (
       <div className="w-full px-2 flex items-center align-center text-gray-500 select-none">
         {ctx.row.index + 1}
@@ -167,7 +189,20 @@ export default function BaseGrid({ tableId }: Props) {
     data,
     columns: columnDefs,
     getCoreRowModel: getCoreRowModel(),
+  
+    // for column resizing
+    columnResizeMode: "onChange",
+    state: { columnSizing },
+    onColumnSizingChange: setColumnSizing,
   });
+
+  const totalWidth = useMemo(
+    () =>
+      table
+        .getVisibleLeafColumns()
+        .reduce((sum, col) => sum + col.getSize(), 0),
+    [table]
+  );
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white">
@@ -185,32 +220,41 @@ export default function BaseGrid({ tableId }: Props) {
 
       {/* Grid */}
       <div className="overflow-auto">
-        <table className="min-w-full border-collapse table-fixed">
-
-          {/* lock widths: first (#) narrow, others 180px */}
-          <colgroup>
-            {table.getAllColumns().map((col, i) => (
-              <col
-                key={col.id}
-                style={{ width: i === 0 ? ROWNUM_W : COL_W }}
-              />
-            ))}
-          </colgroup>
-
+        <table 
+          className="border-collapse table-fixed inline-table"
+          style={{ width: totalWidth }}   // <= key line
+        >
           <thead className="sticky top-0 z-10 bg-white">
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
-                {hg.headers.map((h) => (
-                  <th
-                    key={h.id}
-                    className="border border-gray-300 px-3 py-2 text-left text-sm font-medium text-gray-700"
-                    style={{ height: ROW_H }}
-                  >
-                    {h.isPlaceholder
-                      ? null
-                      : flexRender(h.column.columnDef.header, h.getContext())}
-                  </th>
-                ))}
+                {hg.headers.map((h) => {
+                  const size = h.getSize(); // current width from TanStack
+                  return (
+                    <th
+                      key={h.id}
+                      className="relative border border-gray-300 px-3 py-2 text-left text-sm font-medium text-gray-700"
+                      style={{ width: size, height: ROW_H }}
+                    >
+                      {h.isPlaceholder
+                        ? null
+                        : flexRender(h.column.columnDef.header, h.getContext())}
+
+                      {/* Resizer handle */}
+                      {h.column.getCanResize() && (
+                        <div
+                          onMouseDown={h.getResizeHandler()}
+                          onTouchStart={h.getResizeHandler()}
+                          className="
+                            absolute top-0 right-0 h-full w-1
+                            cursor-col-resize select-none
+                            hover:bg-indigo-400/50
+                            active:bg-indigo-500
+                          "
+                        />
+                      )}
+                    </th>
+                  );
+                })}
               </tr>
             ))}
           </thead>
@@ -218,15 +262,18 @@ export default function BaseGrid({ tableId }: Props) {
           <tbody>
             {table.getRowModel().rows.map((r) => (
               <tr key={r.id} className="even:bg-gray-50/40">
-                {r.getVisibleCells().map((c) => (
-                  <td
-                    key={c.id}
-                    className="relative border border-gray-200 p-0 align-middle"
-                    style={{ height: ROW_H }}
-                  >
-                    {flexRender(c.column.columnDef.cell, c.getContext())}
-                  </td>
-                ))}
+                {r.getVisibleCells().map((c) => {
+                  const size = c.column.getSize();
+                  return (
+                    <td
+                      key={c.id}
+                      className="relative border border-gray-200 p-0 align-middle"
+                      style={{ width: size, height: ROW_H }}
+                    >
+                      {flexRender(c.column.columnDef.cell, c.getContext())}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
             {/* empty-state filler */}
