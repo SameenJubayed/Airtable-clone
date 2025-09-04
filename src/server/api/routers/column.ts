@@ -4,6 +4,20 @@ import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { FieldType } from "@prisma/client";
 
 export const columnRouter = createTRPCRouter({
+  listByTable: protectedProcedure
+    .input(z.object({ tableId: z.string().cuid() }))
+    .query(async ({ input, ctx }) => {
+      await ctx.db.table.findFirstOrThrow({
+        where: { id: input.tableId, base: { createdById: ctx.session.user.id } },
+        select: { id: true },
+      });
+      return ctx.db.column.findMany({
+        where: { tableId: input.tableId },
+        orderBy: { position: "asc" },
+        select: { id: true, name: true, type: true, position: true },
+      });
+    }),
+    
   add: protectedProcedure
     .input(
       z.object({

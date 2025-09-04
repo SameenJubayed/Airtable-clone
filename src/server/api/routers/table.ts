@@ -1,3 +1,4 @@
+// src/server/api/routers/table.ts
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 import { faker } from "@faker-js/faker";
@@ -23,8 +24,8 @@ export const tableRouter = createTRPCRouter({
       z.object({
         baseId: z.string().cuid(),
         name: z.string().trim().min(1).default("Untitled Table"),
-        defaultCols: z.number().int().min(1).max(10).default(4),
-        defaultRows: z.number().int().min(0).max(1000).default(4),
+        defaultCols: z.number().int().min(1).max(10).default(6),
+        defaultRows: z.number().int().min(0).max(1000).default(3),
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -44,10 +45,11 @@ export const tableRouter = createTRPCRouter({
       });
 
       // Create default columns (position = left→right)
+      const defaultNames = ["Name", "Notes", "Assignee", "Status", "Attachments"]
       await ctx.db.column.createMany({
         data: Array.from({ length: input.defaultCols }).map((_, idx) => ({
           tableId: table.id,
-          name: `Column ${idx + 1}`,
+          name: defaultNames[idx] ?? `Column ${idx + 1}`,
           // e.g. column 2 = NUMBER, others = TEXT
           type: idx === 1 ? "NUMBER" : "TEXT",
           position: idx,
@@ -72,8 +74,10 @@ export const tableRouter = createTRPCRouter({
           data: columns.map((c) => ({
             rowId: row.id,
             columnId: c.id,
-            textValue: c.type === "TEXT" ? faker.word.words({ count: { min: 1, max: 3 } }) : null,
-            numberValue: c.type === "NUMBER" ? faker.number.int({ min: 0, max: 9999 }) : null,
+            // textValue: c.type === "TEXT" ? faker.word.words({ count: { min: 1, max: 3 } }) : null,
+            // numberValue: c.type === "NUMBER" ? faker.number.int({ min: 0, max: 9999 }) : null,
+            textValue: null,
+            numberValue: null,
           })),
         });
       }

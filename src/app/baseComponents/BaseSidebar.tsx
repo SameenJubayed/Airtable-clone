@@ -4,9 +4,24 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import KeyboardBackspaceIcon from '@mui/icons-material/KeyboardBackspace';
+import { api } from "~/trpc/react";
 
-export default function BaseSidebar() {
+export default function BaseSidebar({ baseId }: { baseId: string }) {
   const router = useRouter();
+  const utils = api.useUtils();
+
+  const touch = api.base.touchOpen.useMutation({
+    onSuccess: async () => {
+      // make Home’s RecentlyOpened refetch immediately
+      await utils.base.listMine.invalidate();
+      router.push("/home");
+    },
+  });
+
+  const handleBack = () => {
+    // trigger the update
+    touch.mutate({ baseId });
+  };
 
   return (
     <aside
@@ -16,14 +31,14 @@ export default function BaseSidebar() {
       {/* Top button area (logo → back on hover) */}
       <button
         title="Back to home"
-        onClick={() => router.push("/home")}
+        onClick={handleBack}
         className="relative flex h-14 w-full items-center justify-center"
       >
         <Image
           src="/airtable_bw.svg"
           alt="Airtable"
-          width={20}
-          height={20}
+          width={25}
+          height={25}
           className="opacity-100 transition-opacity group-hover:opacity-0"
           priority
         />

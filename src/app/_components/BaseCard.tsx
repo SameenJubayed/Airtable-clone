@@ -2,7 +2,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { api } from "~/trpc/react";
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import StarIcon from '@mui/icons-material/Star';
@@ -62,6 +62,10 @@ export function BaseCard({ id, name, updatedAt, starred = false }: Props) {
       ]);
     },
   });
+
+  useEffect(() => {
+    setLocalStarred(starred);
+  }, [starred]);
 
   const del = api.base.delete.useMutation({
     onSuccess: async () => {

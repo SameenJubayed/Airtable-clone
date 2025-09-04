@@ -17,7 +17,7 @@ export default async function BaseLayout({
   return (
     <div className="min-h-screen bg-[#f6f7f9] text-gray-900">
       {/* Rail owns the extreme top-left corner */}
-      <BaseSidebar />
+      <BaseSidebar baseId={base.id} />
 
       {/* Header sits underneath the rail at the left (padding-left prevents overlap) */}
       <BaseHeader baseId={base.id} initialName={base.name} />

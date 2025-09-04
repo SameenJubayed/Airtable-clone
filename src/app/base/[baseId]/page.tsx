@@ -2,6 +2,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "~/server/auth";
 import { api } from "~/trpc/server";
+import BaseGrid from "../../baseComponents/BaseGrid";
 
 export default async function BasePage({
   params,
@@ -12,16 +13,21 @@ export default async function BasePage({
   const session = await auth();
   if (!session?.user) redirect("/login");
 
-  // bump updatedAt so it shows in “Recently opened”
-  await api.base.touchOpen({ baseId });
+  // Get tables for this base, create one if none
+  const tables = await api.table.listByBase({ baseId });
+  const tableId =
+    tables[0]?.id ??
+    (await api.table.createWithDefaults({
+      baseId,
+      name: "Table 1",
+      defaultCols: 6,
+      defaultRows: 3,
+    })).id;
 
   // minimal placeholder content area for now
   return (
-    <div className="p-4">
-      <h1 className="text-xl font-semibold">Tables</h1>
-      <p className="mt-2 text-sm text-gray-600">
-        (This is where the grid/tables UI will live.)
-      </p>
+    <div>
+      <BaseGrid tableId={tableId} />
     </div>
   );
 }

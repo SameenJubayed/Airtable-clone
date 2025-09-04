@@ -1,4 +1,4 @@
-// app/(dashboard)/home/RecentlyOpened.tsx
+// app/(dashboard)/home/Bases.tsx
 "use client";
 
 import { api } from "~/trpc/react";
@@ -7,8 +7,8 @@ import { BaseCard } from "../../_components/BaseCard";
 export default function UserBases() {
   // prevent refetches during navigation by turning off focus/reconnect refetches:
   const { data, isLoading } = api.base.listMine.useQuery(undefined, {
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 
   return (
