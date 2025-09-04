@@ -3,7 +3,6 @@
 
 import { useMemo, useState, useEffect } from "react";
 import {
-  createColumnHelper,
   flexRender,
   getCoreRowModel,
   useReactTable,
@@ -15,7 +14,7 @@ import AddIcon from "@mui/icons-material/Add";
 
 const ROW_H = 32;          
 const COL_W = 180;         
-const ROWNUM_W = 10;       
+const ROWNUM_W = 35;       
 
 type Props = { tableId: string };
 
@@ -28,20 +27,6 @@ type CellRecord = {
 export default function BaseGrid({ tableId }: Props) {
   // columns 
   const columnsQ = api.column.listByTable.useQuery({ tableId });
-  useEffect(() => {
-    if (!columnsQ.data) return;
-    // only set once—don't clobber user-resized widths
-    setColumnSizing((prev) => {
-      if (Object.keys(prev).length) return prev; // already seeded
-      const seed: ColumnSizingState = {};
-      // seed data columns
-      for (const c of columnsQ.data) seed[c.id] = COL_W;
-      // seed the row-number pseudo column id (matches your ColumnDef id)
-      seed["__rownum"] = ROWNUM_W;
-      return seed;
-    });
-  }, [columnsQ.data]);
-
   // rows + cells
   const rowsQ = api.row.list.useQuery({ tableId, skip: 0, take: 200 });
   // NEW: column sizing state (TanStack v8)
@@ -90,7 +75,7 @@ export default function BaseGrid({ tableId }: Props) {
     return columnsQ.data.map((col) => ({
       id: col.id,
       header: () => (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 overflow-hidden">
           <span className="font-medium">{col.name}</span>
         </div>
       ),
@@ -174,6 +159,8 @@ export default function BaseGrid({ tableId }: Props) {
     id: "__rownum",
     header: () => <span className="text-gray-500">#</span>,
     size: ROWNUM_W,
+    maxSize: ROWNUM_W,
+    enableResizing: false,
     cell: (ctx) => (
       <div className="w-full px-2 flex items-center align-center text-gray-500 select-none">
         {ctx.row.index + 1}
@@ -196,12 +183,11 @@ export default function BaseGrid({ tableId }: Props) {
     onColumnSizingChange: setColumnSizing,
   });
 
+  // compute widths once per render from TanStack
+  const leafCols = table.getVisibleLeafColumns();
   const totalWidth = useMemo(
-    () =>
-      table
-        .getVisibleLeafColumns()
-        .reduce((sum, col) => sum + col.getSize(), 0),
-    [table]
+    () => leafCols.reduce((sum, col) => sum + col.getSize(), 0),
+    [leafCols]
   );
 
   return (
@@ -224,6 +210,12 @@ export default function BaseGrid({ tableId }: Props) {
           className="border-collapse table-fixed inline-table"
           style={{ width: totalWidth }}   // <= key line
         >
+          {/* Each column’s width is driven here, not on TD/TH */}
+          <colgroup>
+            {leafCols.map((col) => (
+              <col key={col.id} style={{ width: col.getSize() }} />
+            ))}
+          </colgroup>
           <thead className="sticky top-0 z-10 bg-white">
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
@@ -233,7 +225,7 @@ export default function BaseGrid({ tableId }: Props) {
                     <th
                       key={h.id}
                       className="relative border border-gray-300 px-3 py-2 text-left text-sm font-medium text-gray-700"
-                      style={{ width: size, height: ROW_H }}
+                      style={{ height: ROW_H }}
                     >
                       {h.isPlaceholder
                         ? null
@@ -268,7 +260,7 @@ export default function BaseGrid({ tableId }: Props) {
                     <td
                       key={c.id}
                       className="relative border border-gray-200 p-0 align-middle"
-                      style={{ width: size, height: ROW_H }}
+                      style={{ height: ROW_H }}
                     >
                       {flexRender(c.column.columnDef.cell, c.getContext())}
                     </td>
