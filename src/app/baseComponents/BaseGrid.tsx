@@ -29,9 +29,10 @@ export default function BaseGrid({ tableId }: Props) {
   const columnsQ = api.column.listByTable.useQuery({ tableId });
   // rows + cells
   const rowsQ = api.row.list.useQuery({ tableId, skip: 0, take: 200 });
-  // NEW: column sizing state (TanStack v8)
+  // column sizing state
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
 
+  const utils = api.useUtils();
   // Adds one row at the end, on success refresh to show new row
   const createRow = api.row.create.useMutation({
     onSuccess: async () => {
@@ -41,6 +42,31 @@ export default function BaseGrid({ tableId }: Props) {
 
   // update a single cell
   const updateCell = api.row.updateCell.useMutation({
+    onMutate: async ({rowId, columnId, textValue, numberValue }) => {
+      // Cancel any ongoing fetches
+      await utils.row.list.cancel({ tableId, skip: 0, take: 200 });
+
+      // getting previous data for rollback
+      const previousRows = utils.row.list.getData({ tableId, skip: 0, take: 200 });
+
+      utils.row.list.setData({ tableId, skip: 0, take: 200 }, (oldData) => {
+      if (!oldData) return oldData;
+
+      return {
+        ...oldData,
+        cells: oldData.cells.map((cell) => {
+          if (cell.rowId !== rowId || cell.columnId !== columnId) return cell;
+
+          return {
+            ...cell,
+            textValue: textValue !== undefined ? textValue : cell.textValue,
+            numberValue: numberValue !== undefined ? numberValue : cell.numberValue,
+          };
+        }),
+      };
+      });
+    },
+    // refetching after settling to make sure everything alligns 
     onSettled: () => rowsQ.refetch(),
   });
 
@@ -76,7 +102,7 @@ export default function BaseGrid({ tableId }: Props) {
       id: col.id,
       header: () => (
         <div className="flex items-center gap-2 overflow-hidden">
-          <span className="font-medium">{col.name}</span>
+          <span className="font-bold">{col.name}</span>
         </div>
       ),
       // tell TanStack to read row[col.id] for this column's value
@@ -93,8 +119,8 @@ export default function BaseGrid({ tableId }: Props) {
 
         const isEditing = 
           editingKey?.rowId === rowId && editingKey?.columnId === columnId;
-
-          // READ MODE
+        
+        // READ MODE
         if (!isEditing) {
           return (
             <div
@@ -168,6 +194,16 @@ export default function BaseGrid({ tableId }: Props) {
     ),
   };
 
+  // // Implement adding row button on table instead of up top 
+  // const addRowButton: {
+
+  // }
+
+  // Implement adding row button on table instead of up top 
+  // const addColButton: {
+
+  // }
+
   const columnDefs = useMemo<ColumnDef<CellRecord, unknown>[]>(() => {
     return [rowNumCol, ...dynamicCols];
   }, [dynamicCols]);
@@ -194,7 +230,7 @@ export default function BaseGrid({ tableId }: Props) {
     <div className="rounded-lg border border-gray-200 bg-white">
       {/* Top bar: table name area & add row */}
       <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2">
-        <div className="text-sm text-gray-600">Grid view</div>
+        <div className="text-sm text-gray-600">Table 1 temp (add more todo)</div>
         <button
           onClick={() => createRow.mutate({ tableId })}
           className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-sm hover:bg-gray-50"
