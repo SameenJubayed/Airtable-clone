@@ -24,19 +24,110 @@ type CellRecord = {
   [columnId: string]: unknown;
 };
 
+
 export default function BaseGrid({ tableId }: Props) {
   // columns 
   const columnsQ = api.column.listByTable.useQuery({ tableId });
   // rows + cells
-  const rowsQ = api.row.list.useQuery({ tableId, skip: 0, take: 200 });
+  const key = { tableId, skip: 0, take: 200 } as const;
+  const rowsQ = api.row.list.useQuery(key);
   // column sizing state
   const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
+  // Track cell currently being editted
+  const [editingKey, setEditingKey] = useState<{rowId: string; columnId: string;} | null>(null);
 
   const utils = api.useUtils();
+
   // Adds one row at the end, on success refresh to show new row
   const createRow = api.row.create.useMutation({
-    onSuccess: async () => {
-      await rowsQ.refetch();
+    onMutate: async () => {
+      // Cancel any ongoing fetches
+      await utils.row.list.cancel(key);
+
+      // snapshot for rollback
+      const previous = utils.row.list.getData(key)
+
+      // build an optimistic row id & position
+      const tempRowId = `optimistic-${Date.now}`;
+      const position = (previous?.rows?.length ?? 0); // appending to end
+
+      // Finding the columns we need to write empty cells for
+      const cols = columnsQ.data ?? [];
+
+      //writing optimistic cache
+      utils.row.list.setData(key, (old) => {
+        const now = new Date();
+        if (!old) {
+          return {
+            rows: [{ id: tempRowId, tableId, position, createdAt: now, updatedAt: now, }],
+            cells: cols.map((c) => ({
+              rowId: tempRowId,
+              columnId: c.id,
+              textValue: null,
+              numberValue: null,
+              createdAt: now,
+              updatedAt: now,
+            })),
+          };
+        }
+
+        const next = {
+          rows: [
+            ...old.rows,
+            {
+              id: tempRowId,
+              tableId,        
+              position,
+              createdAt: now,
+              updatedAt: now,
+            },
+          ],
+          cells: [
+            ...old.cells,
+            ...cols.map((c) => ({
+              rowId: tempRowId,
+              columnId: c.id,
+              textValue: null,
+              numberValue: null,
+              createdAt: now,
+              updatedAt: now,
+            })),
+          ],
+        } as typeof old;
+
+        return next;
+      });
+      // pass context to onError/onSuccess
+      return { previous, tempRowId };
+    },
+
+    // If server fails, roll back cache
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) utils.row.list.setData(key, ctx.previous);
+    },
+
+    // replace optimistic id with real id returned by the server
+    onSuccess: (data, _vars, ctx) => {
+      const realId = (data as { id: string} | undefined)?.id;
+      if (!realId || !ctx?.tempRowId) return;
+
+      utils.row.list.setData(key, (old) => {
+        if (!old) return old;
+
+        const rows = old.rows.map((r) =>
+          r.id === ctx.tempRowId ? { ...r, id: realId } : r
+        );
+        const cells = old.cells.map((c) =>
+          c.rowId === ctx.tempRowId ? { ...c, rowId: realId } : c
+        );
+
+        return { rows, cells } as typeof old;
+      });
+    },
+
+    // resyncing
+    onSettled: () => {
+        void rowsQ.refetch();
     },
   });
 
@@ -47,31 +138,36 @@ export default function BaseGrid({ tableId }: Props) {
       await utils.row.list.cancel({ tableId, skip: 0, take: 200 });
 
       // getting previous data for rollback
-      const previousRows = utils.row.list.getData({ tableId, skip: 0, take: 200 });
+      const previousData = utils.row.list.getData({ tableId, skip: 0, take: 200 });
 
       utils.row.list.setData({ tableId, skip: 0, take: 200 }, (oldData) => {
-      if (!oldData) return oldData;
+        if (!oldData) return oldData;
 
-      return {
-        ...oldData,
-        cells: oldData.cells.map((cell) => {
-          if (cell.rowId !== rowId || cell.columnId !== columnId) return cell;
+        return {
+          ...oldData,
+          cells: oldData.cells.map((cell) => {
+            if (cell.rowId !== rowId || cell.columnId !== columnId) return cell;
 
-          return {
-            ...cell,
-            textValue: textValue !== undefined ? textValue : cell.textValue,
-            numberValue: numberValue !== undefined ? numberValue : cell.numberValue,
-          };
-        }),
-      };
+            return {
+              ...cell,
+              textValue: textValue !== undefined ? textValue : cell.textValue,
+              numberValue: numberValue !== undefined ? numberValue : cell.numberValue,
+            };
+          }),
+        };
       });
+
+      return { previousData }
     },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previousData) utils.row.list.setData(key, ctx.previousData);
+    },
+
     // refetching after settling to make sure everything alligns 
     onSettled: () => rowsQ.refetch(),
   });
 
-  // Track cell currently being editted
-  const [editingKey, setEditingKey] = useState<{rowId: string; columnId: string;} | null>(null);
+
 
   // Shape server cells -> row objects for tanstack
   const data: CellRecord[] = useMemo(() => {
@@ -291,7 +387,6 @@ export default function BaseGrid({ tableId }: Props) {
             {table.getRowModel().rows.map((r) => (
               <tr key={r.id} className="even:bg-gray-50/40">
                 {r.getVisibleCells().map((c) => {
-                  const size = c.column.getSize();
                   return (
                     <td
                       key={c.id}

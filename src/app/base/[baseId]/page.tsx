@@ -2,7 +2,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "~/server/auth";
 import { api } from "~/trpc/server";
-import BaseGrid from "../../baseComponents/BaseGrid";
+import BaseGrid from "../../baseComponents/grid/index";
 
 export default async function BasePage({
   params,
