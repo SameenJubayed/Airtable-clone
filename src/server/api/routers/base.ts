@@ -20,16 +20,45 @@ export const baseRouter = createTRPCRouter({
     });
   }),
 
-  create: protectedProcedure.mutation(async ({ ctx }) => {
-      return ctx.db.base.create({
-        data: {
-          name: "Untitled Base",
-          createdById: ctx.session.user.id,
-          lastOpenedAt: new Date(),
+  createWithDefaults: protectedProcedure
+  .input(z.object({ name: z.string().optional() }))
+  .mutation(async ({ ctx, input }) => {
+    // create base
+    const base = await ctx.db.base.create({
+      data: {
+        name: "Untitled Base",
+        createdById: ctx.session.user.id,
+        lastOpenedAt: new Date(),
+      },
+    });
+
+    // create first table with defaults
+    const table = await ctx.db.table.create({
+      data: {
+        baseId: base.id,
+        name: "Table 1",
+        position: 0,
+        columns: {
+          createMany: {
+            data: [
+              { name: "Name", type: "TEXT", position: 0 },
+              { name: "Notes", type: "TEXT", position: 1 },
+              { name: "Assignee", type: "TEXT", position: 2 },
+              { name: "Status", type: "TEXT", position: 3 },
+              { name: "Attachments", type: "TEXT", position: 4 },
+            ],
+          },
         },
-        select: { id: true, name: true },
-      });
-    }),
+        rows: {
+          createMany: {
+            data: Array.from({ length: 3 }).map((_, i) => ({ position: i })),
+          },
+        },
+      },
+    });
+
+    return { baseId: base.id, tableId: table.id };
+  }),
 
   // Toggle star
   setStarred: protectedProcedure

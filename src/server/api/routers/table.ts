@@ -24,7 +24,7 @@ export const tableRouter = createTRPCRouter({
       z.object({
         baseId: z.string().cuid(),
         name: z.string().trim().min(1).default("Untitled Table"),
-        defaultCols: z.number().int().min(1).max(10).default(6),
+        defaultCols: z.number().int().min(1).max(10).default(5),
         defaultRows: z.number().int().min(0).max(1000).default(3),
       }),
     )

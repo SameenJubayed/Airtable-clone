@@ -9,10 +9,11 @@ export function CreateBaseCard() {
   const utils = api.useUtils();
   const [loading, setLoading] = useState(false);
 
-  const createMutation = api.base.create.useMutation({
-    onSuccess: async (base) => {
+
+  const createMutation = api.base.createWithDefaults.useMutation({
+    onSuccess: async ({ baseId, tableId }) => {
       // navigate immediately
-      router.push(`/base/${base.id}`);
+      router.push(`/base/${baseId}/table/${tableId}`);
 
       // refresh the recently opened list in the background (don’t block navigation)
       await utils.base.listMine.invalidate();
@@ -23,7 +24,7 @@ export function CreateBaseCard() {
   const handleCreate = () => {
     if (!loading) {
       setLoading(true);
-      createMutation.mutate();
+      createMutation.mutate({});
     }
   };
 

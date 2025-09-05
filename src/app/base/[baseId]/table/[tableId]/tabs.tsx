@@ -79,8 +79,6 @@ export default function TableTabs({
               create.mutate({
                 baseId,
                 name: `Table ${(tablesQ.data?.length ?? 0) + 1}`,
-                defaultCols: 6,
-                defaultRows: 3,
               })
             }
             aria-label="Add table"
