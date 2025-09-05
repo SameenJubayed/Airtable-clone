@@ -3,6 +3,7 @@
 
 import Link from "next/link";
 import { useMemo, useState, useEffect } from "react"
+import { useRouter } from "next/navigation";
 import { api } from "~/trpc/react";
 import StarBorderIcon from '@mui/icons-material/StarBorder';
 import StarIcon from '@mui/icons-material/Star';
@@ -30,10 +31,15 @@ function timeAgo(input?: string | Date) {
 }
 
 export function BaseCard({ id, name, updatedAt, starred = false }: Props) {
+  const router = useRouter();
   const utils = api.useUtils();
   const [editing, setEditing] = useState(false);
   const [localName, setLocalName] = useState(name);
   const [localStarred, setLocalStarred] = useState(starred);
+
+  // 1) Fetch the first table id (very small payload)
+  const firstTableQ = api.table.firstIdByBase.useQuery({ baseId: id }, { staleTime: 30_000 });
+  const targetHref = `/base/${id}/table/${firstTableQ.data?.tableId}`
 
   // Mutations
   const rename = api.base.rename.useMutation({
@@ -93,8 +99,17 @@ export function BaseCard({ id, name, updatedAt, starred = false }: Props) {
     void rename.mutateAsync({ baseId: id, name: next });
   };
 
+  // Optional UX: prefetch the page you’ll navigate to on hover
+  const prefetchTarget = () => {
+    // Next.js will ignore unknown routes; this is best-effort
+    router.prefetch?.(targetHref);
+  };
+
   const CardInner = (
-    <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition group-hover:shadow-md">
+    <div 
+      className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition group-hover:shadow-md"
+      onMouseEnter={prefetchTarget}
+    >
       <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-100 text-purple-700 font-semibold">
         {initials}
       </div>
@@ -132,7 +147,7 @@ export function BaseCard({ id, name, updatedAt, starred = false }: Props) {
   return (
     <div className="relative group">
       {!editing ? (
-        <Link href={`/base/${id}`} className="block">
+        <Link href={targetHref} className="block">
           {CardInner}
         </Link>
       ) : (

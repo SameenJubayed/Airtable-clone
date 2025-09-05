@@ -84,6 +84,17 @@ export const tableRouter = createTRPCRouter({
 
       return { id: table.id };
     }),
+    
+  firstIdByBase: protectedProcedure
+    .input(z.object({ baseId: z.string().cuid() }))
+    .query(async ({ input, ctx }) => {
+      const t = await ctx.db.table.findFirst({
+        where: { baseId: input.baseId },
+        orderBy: { position: "asc" },
+        select: { id: true },
+      });
+      return { tableId: t?.id ?? null };
+    }),
 
     
   rename: protectedProcedure
