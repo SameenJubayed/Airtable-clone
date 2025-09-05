@@ -25,27 +25,35 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
   });
 
   const columns = [rowNumCol, ...dynamicCols];
+  const loading = columnsQ.isLoading || rowsQ.isLoading;
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white">
-      {/* Top bar: table name area & add row */}
-      <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2">
-        <div className="text-sm text-gray-600">Grid view</div>
-        <button
-          onClick={() => createRow.mutate({ tableId })}
-          className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-sm hover:bg-gray-50"
-        >
-          <AddIcon fontSize="small" />
-          Add row
-        </button>
+    <>
+      <div className="bg-white">
+        {/* Top bar: views and all table options */}
+        <div className="flex h-[48px] items-center justify-between border-b border-gray-200 px-3">
+          <div className="text-sm text-gray-600">Grid view</div>
+          <button
+            onClick={() => createRow.mutate({ tableId })}
+            className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-sm hover:bg-gray-50"
+          >
+            <AddIcon fontSize="small" />
+            Add row
+          </button>
+        </div>
       </div>
 
-      <TableView
-        data={data}
-        columns={columns}
-        columnSizing={columnSizing}
-        setColumnSizing={setColumnSizing}
-      />
-    </div>
+      {loading ? (
+        <div className="p-4 text-sm text-gray-500">Loading grid…</div>
+      ) : (
+        <TableView
+          data={data}
+          columns={columns}
+          columnSizing={columnSizing}
+          setColumnSizing={setColumnSizing}
+        />
+      )}
+
+    </>
   );
 }

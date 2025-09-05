@@ -1,8 +1,8 @@
 
-// app/baseComponents/grid/TableView.tsx
+// app/baseComponents/grid/tableView.tsx
 "use client";
 
-import { useMemo, type Dispatch, type SetStateAction } from "react";
+import { useMemo, useCallback, type Dispatch, type SetStateAction } from "react";
 import { 
   flexRender, 
   getCoreRowModel, 
@@ -21,6 +21,14 @@ type Props = {
 };
 
 export default function TableView({ data, columns, columnSizing, setColumnSizing }: Props) {  
+  // wrapper so tanstack can pass either a value or an updater without recreating a new function each render
+  const handleColumnSizingChange = useCallback(
+    (updater: SetStateAction<ColumnSizingState>) => {
+      setColumnSizing(updater);
+    },
+    [setColumnSizing]
+  );
+
   const table = useReactTable({
     data,
     columns,
@@ -28,7 +36,7 @@ export default function TableView({ data, columns, columnSizing, setColumnSizing
     // for column resizing
     columnResizeMode: "onChange",
     state: { columnSizing },
-    onColumnSizingChange: setColumnSizing,
+    onColumnSizingChange: handleColumnSizingChange,
   });
 
   // compute widths once per render from TanStack
@@ -51,18 +59,32 @@ export default function TableView({ data, columns, columnSizing, setColumnSizing
           ))}
         </colgroup>
 
-        <thead className="sticky top-0 z-10 bg-white">
+        <thead 
+          className={[
+            "sticky top-0 z-10 bg-white",
+            // fixing the "sticky header + boarder-collapse" bug using after: 
+            // (missing row border between body and header) 
+            "relative after:content-[''] after:absolute",
+            "after:left-0 after:right-0 after:bottom-0 after:h-0 after:bg-gray-200"
+          ].join(" ")}
+        >
           {table.getHeaderGroups().map((hg) => (
             <tr key={hg.id}>
-              {hg.headers.map((h) => (
+              {hg.headers.map((h, colIdx) => (
                 <th
                   key={h.id}
-                  className="
-                    relative border border-gray-300 
-                    px-3 py-2 
-                    text-left text-sm 
-                    font-medium text-gray-700
-                  "
+                  className={[
+                    "relative px-3",         
+                    // uniform borders like body
+                    "border border-gray-300",
+                    // remove top border (avoid thicker top edge)
+                    "border-t-0",
+                    // remove left border on first column (avoid thicker left edge)
+                    colIdx === 0 ? "border-l-0" : "",
+                    // header text style
+                    "text-left text-sm font-medium text-gray-700",
+                    "bg-white",
+                  ].join(" ")}
                   style={{ height: ROW_H }}
                 >
                   {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
@@ -87,11 +109,16 @@ export default function TableView({ data, columns, columnSizing, setColumnSizing
 
         <tbody>
           {table.getRowModel().rows.map((r) => (
-            <tr key={r.id} className="even:bg-gray-50/40">
-              {r.getVisibleCells().map((c) => (
+            <tr key={r.id} className="bg-white">
+              {r.getVisibleCells().map((c, colIdx) => (
                 <td 
                   key={c.id} 
-                  className="relative border border-gray-200 p-0 align-middle" 
+                  className={[
+                    "relative p-0 align-middle",
+                    "border border-gray-300",
+                     colIdx === 0 ? "border-l-0" : "",
+                     "text-sm"
+                  ].join(" ")}
                   style={{ height: ROW_H }}
                 >
                   {flexRender(c.column.columnDef.cell, c.getContext())}

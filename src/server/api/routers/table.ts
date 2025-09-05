@@ -1,7 +1,7 @@
 // src/server/api/routers/table.ts
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { faker } from "@faker-js/faker";
+// import { faker } from "@faker-js/faker";
 
 export const tableRouter = createTRPCRouter({
   listByBase: protectedProcedure
