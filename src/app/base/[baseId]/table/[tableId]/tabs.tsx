@@ -66,12 +66,12 @@ export default function TableTabs({
                       ? "bg-white text-gray-900 font-medium"
                       : "bg-gray-100 text-gray-500 hover:bg-gray-300 hover:font-medium",
                     // subtle rounding, but not on the very first tab's left edge
-                    "rounded-sm first:rounded-l-none",
+                    "rounded-t-sm first:rounded-l-none",
                     // no borders, no gaps
-                    "border-0 px-2",
+                    "border-0 px-1",
                   ].join(" ")}
                 >
-                  <span className="truncate max-w-[160px]">{t.name}</span>
+                  <span className="truncate max-w-[160px]">{t.name}</span> 
                 </button>
 
               </Fragment>
