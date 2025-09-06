@@ -17,9 +17,17 @@ export default function TableTabs({
 
   const create = api.table.createWithDefaults.useMutation({
     onSuccess: async ({ id }) => {
-      // keep list fresh, then go to the new table
-      await utils.table.listByBase.invalidate({ baseId });
+      // proactively clear caches for the new table’s data
+      await Promise.all([
+        utils.table.listByBase.invalidate({ baseId }),
+        utils.column.listByTable.invalidate({ tableId: id }),
+        utils.row.list.invalidate({ tableId: id, skip: 0, take: 200 }),
+      ]);
       router.push(`/base/${baseId}/table/${id}`);
+    },
+    onError: (err) => {
+      console.error("create table failed", err);
+      alert("Failed to create tail :pensive:");
     },
   });
 
@@ -60,10 +68,10 @@ export default function TableTabs({
                     // subtle rounding, but not on the very first tab's left edge
                     "rounded-t-sm first:rounded-l-none",
                     // no borders, no gaps
-                    "border-0 px-2",
+                    "border-0 px-1",
                   ].join(" ")}
                 >
-                  <span className="truncate max-w-[160px]">{t.name}</span>
+                  <span className="truncate max-w-[160px]">{t.name}</span> 
                 </button>
 
               </Fragment>
