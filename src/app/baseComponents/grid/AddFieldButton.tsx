@@ -155,7 +155,12 @@ export default function AddFieldButton({ tableId }: Props) {
         ref={btnRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="h-8 w-[94px] inline-flex items-center justify-center gap-1 rounded-sm text-[13px] text-gray-600 hover:bg-gray-100"
+        className="
+          h-8 w-[94px] 
+          inline-flex items-center justify-center gap-1 
+          rounded-sm text-[13px] text-gray-600 
+          hover:bg-gray-100
+        "
         title="Add field"
         aria-expanded={open}
       >
@@ -178,7 +183,12 @@ export default function AddFieldButton({ tableId }: Props) {
                 <input
                   value={fieldName}
                   onChange={(e) => setFieldName(e.target.value)}
-                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm outline-none focus:border-indigo-500"
+                  className="
+                    w-full rounded px-2 py-1
+                    border border-gray-300  
+                    text-sm outline-none 
+                    focus:border-indigo-500
+                  "
                   placeholder="Field name"
                   autoFocus
                 />
@@ -189,7 +199,12 @@ export default function AddFieldButton({ tableId }: Props) {
                 <select
                   value={fieldType}
                   onChange={(e) => setFieldType(e.target.value as "TEXT" | "NUMBER")}
-                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm outline-none focus:border-indigo-500"
+                  className="
+                    w-full px-2 py-1 
+                    rounded border border-gray-300  
+                    text-sm outline-none 
+                    focus:border-indigo-500
+                  "
                 >
                   <option value="TEXT">Text</option>
                   <option value="NUMBER">Number</option>
@@ -200,7 +215,12 @@ export default function AddFieldButton({ tableId }: Props) {
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
-                  className="h-8 px-3 rounded border border-gray-300 text-sm text-gray-700 hover:bg-gray-50"
+                  className="
+                    h-8 px-3 rounded 
+                    border border-gray-300 
+                    text-sm text-gray-700 
+                    hover:bg-gray-50
+                  "
                 >
                   Cancel
                 </button>
@@ -208,7 +228,12 @@ export default function AddFieldButton({ tableId }: Props) {
                   type="button"
                   onClick={handleCreate}
                   disabled={!fieldName.trim() || addColumn.isPending}
-                  className="h-8 px-3 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 disabled:opacity-60"
+                  className="
+                    h-8 px-3 rounded 
+                    bg-indigo-600 
+                    text-white text-sm 
+                    hover:bg-indigo-700 disabled:opacity-60
+                  "
                 >
                   {addColumn.isPending ? "Creating…" : "Create field"}
                 </button>
