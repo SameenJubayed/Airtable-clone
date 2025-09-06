@@ -16,6 +16,7 @@ import TableChartOutlinedIcon from '@mui/icons-material/TableChartOutlined';
 import IosShareOutlinedIcon from '@mui/icons-material/IosShareOutlined';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import DvrOutlinedIcon from '@mui/icons-material/DvrOutlined';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
 
 export default function BaseGrid({ tableId }: { tableId: string }) {
@@ -65,9 +66,9 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
               aria-haspopup="menu"
               title="Change view"
             >
-              <TableChartOutlinedIcon fontSize="small"/>
+              <TableChartOutlinedIcon fontSize="small" className="opacity-80" style={{ color: "rgb(22, 110, 225)"}}/>
               <span className="text-[13px] text-grey-600 font-medium">Grid view</span>
-              <span className="inline-block translate-y-[1px] text-gray-600">▾</span>
+              <span className="inline-block text-gray-500"><ExpandMoreIcon/></span>
             </button>
           </div>
 
