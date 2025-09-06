@@ -6,7 +6,6 @@ import { useGridData, useColumnSizingState, useEditingKey, useOptimisticCreateRo
 import { useDynamicColumns, useRowNumberColumn } from "./columns";
 import TableView from "./tableView";
 // MUI ICONS
-import AddIcon from "@mui/icons-material/Add";
 import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
 import FilterListOutlinedIcon from '@mui/icons-material/FilterListOutlined';
 import SwapVertIcon from '@mui/icons-material/SwapVert';
@@ -101,15 +100,6 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
             >
             <SearchRoundedIcon fontSize="small" className="text-gray-600" />
             </div>
-
-            <button
-              onClick={() => createRow.mutate({ tableId })}
-              className="h-8 ml-1 px-2 inline-flex items-center gap-1 rounded-sm border border-gray-300 bg-white text-[13px] hover:bg-gray-50"
-              title="Add row"
-            >
-              <AddIcon fontSize="small" />
-              Add row
-            </button>
           </div>
         </div>
       </div>
@@ -118,10 +108,12 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
         <div className="p-4 text-sm text-gray-500">Loading grid…</div>
       ) : (
         <TableView
+          tableId={tableId} 
           data={data}
           columns={columns}
           columnSizing={columnSizing}
           setColumnSizing={setColumnSizing}
+          onAddRow={() => createRow.mutate({ tableId })}
         />
       )}
 

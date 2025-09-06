@@ -3,7 +3,7 @@
 
 import { useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import type { CellRecord, EditingKey } from "./types";
+import type { CellRecord, EditingKey, ColMeta } from "./types";
 import { COL_W, MIN_COL_W, ROWNUM_W } from "./constants";
 import { api } from "~/trpc/react";
 
@@ -18,15 +18,22 @@ export function useRowNumberColumn(): ColumnDef<CellRecord, unknown> {
   return useMemo<ColumnDef<CellRecord, unknown>>(
     () => ({
       id: "__rownum",
-      header: () => <span className="text-gray-500">#</span>,
+      header: () => <span className="text-gray-500 flex items-center justify-center">#</span>,
       size: ROWNUM_W,
       maxSize: ROWNUM_W,
       enableResizing: false,
       cell: (ctx) => (
-        <div className="w-full px-2 flex items-center text-gray-500 select-none">
+        <div className="
+          w-full h-full flex items-center justify-center
+          text-gray-500 select-none">
           {ctx.row.index + 1}
         </div>
       ),
+      // no right border for this column (both th & td)
+      meta: {
+        tdClassName: "border-r-0",
+        thClassName: "border-r-0",
+      } as ColMeta,
     }),
     [],
   );
@@ -40,7 +47,7 @@ export function useDynamicColumns({
 }: MakeColsArgs) {
   return useMemo<ColumnDef<CellRecord, unknown>[]>(() => {
     if (!columnsData) return [];
-    return columnsData.map((col) => ({
+    return columnsData.map((col, idx) => ({
       id: col.id,
       header: () => (
         <div className="flex items-center gap-2 overflow-hidden">
@@ -53,6 +60,10 @@ export function useDynamicColumns({
       size: COL_W,
       // min possible size 60
       minSize: MIN_COL_W,
+      meta: (idx === 0
+        ? { tdClassName: "border-l-0", thClassName: "border-l-0" }
+        : {}) as ColMeta,
+
       cell: (ctx) => {
         const rowId = ctx.row.original.rowId;
         const columnId = col.id;

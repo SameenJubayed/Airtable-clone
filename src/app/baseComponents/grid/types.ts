@@ -6,3 +6,8 @@ export type CellRecord = {
 };
 
 export type EditingKey = { rowId: string; columnId: string } | null;
+
+export type ColMeta = {
+  tdClassName?: string;  // extra classes for <td>
+  thClassName?: string;  // extra classes for <th>
+};
