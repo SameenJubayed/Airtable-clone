@@ -54,7 +54,7 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
           {/* LEFT: menu + view selector */}
           <div className="flex items-center gap-1">
             <button
-              className="h-8 w-8 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center justify-center"
+              className="h-8 w-8 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center justify-center cursor-pointer"
               aria-label="Table menu"
               title="Table menu"
             >
@@ -62,7 +62,7 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
             </button>
 
             <button
-              className="h-8 px-2 rounded-sm hover:bg-gray-100 text-gray-600 flex items-center gap-2"
+              className="h-8 px-2 rounded-sm hover:bg-gray-100 text-gray-600 flex items-center gap-2 cursor-pointer"
               aria-haspopup="menu"
               title="Change view"
             >
@@ -74,38 +74,38 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
 
           {/* RIGHT: everything else, aligned to the far right */}
           <div className="ml-auto flex items-center gap-1">
-            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-2" title="Hide fields">
+            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-2 cursor-pointer" title="Hide fields">
               <VisibilityOffOutlinedIcon fontSize="small" />
               <span className="text-[13px]">Hide fields</span>
             </button>
 
-            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-2" title="Filter">
+            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-2 cursor-pointer" title="Filter">
               <FilterListOutlinedIcon fontSize="small" />
               <span className="text-[13px]">Filter</span>
             </button>
 
-            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-2" title="Group">
+            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-2 cursor-pointer" title="Group">
               <DvrOutlinedIcon fontSize="small" />
               <span className="text-[13px]">Group</span>
             </button>
 
-            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-2" title="Sort">
+            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-2 cursor-pointer" title="Sort">
               <SwapVertIcon fontSize="small" />
               <span className="text-[13px]">Sort</span>
             </button>
 
-            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-2" title="Color">
+            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-2 cursor-pointer" title="Color">
               <FormatColorFillOutlinedIcon fontSize="small" />
               <span className="text-[13px]">Color</span>
             </button>
 
-            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-2" title="Share and sync">
+            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-2 cursor-pointer" title="Share and sync">
               <IosShareOutlinedIcon fontSize="small" />
               <span className="text-[13px]">Share and sync</span>
             </button>
 
             <div
-              className="h-8 ml-1 flex items-center gap-2 rounded-sm px-2 hover:bg-gray-50 focus-within:ring-2 focus-within:ring-indigo-500"
+              className="h-8 ml-1 flex items-center gap-2 rounded-sm px-2 hover:bg-gray-50 focus-within:ring-2 focus-within:ring-indigo-500 cursor-pointer"
               title="Search"
             >
             <SearchRoundedIcon fontSize="small" className="text-gray-600" />
