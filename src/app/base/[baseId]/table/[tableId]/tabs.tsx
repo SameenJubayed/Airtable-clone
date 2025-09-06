@@ -1,7 +1,7 @@
 // app/base/[baseId]/table/[tableId]/tabs.tsx
 "use client";
 
-import { Fragment } from "react";
+import { Fragment,  } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "~/trpc/react";
 import AddIcon from "@mui/icons-material/Add";
@@ -16,19 +16,56 @@ export default function TableTabs({
   const tablesQ = api.table.listByBase.useQuery({ baseId });
 
   const create = api.table.createWithDefaults.useMutation({
-    onSuccess: async ({ id }) => {
-      // proactively clear caches for the new table’s data
-      await Promise.all([
-        utils.table.listByBase.invalidate({ baseId }),
+    onMutate: async (vars) => {
+      await utils.table.listByBase.cancel({ baseId });
+
+      const previous = utils.table.listByBase.getData({ baseId });
+
+      const tempId = `optimistic-${Date.now()}`;
+      const name = vars.name ?? `Table ${(previous?.length ?? 0) + 1}`;
+
+      utils.table.listByBase.setData({ baseId }, (old) => {
+        const arr = (old ?? []);
+        const optimisticItem = {
+          id: tempId,
+          name,
+          createdAt: new Date(),
+          position: arr.length, // append to end
+        };
+
+        // go to the brand-new temp tab immediately
+        router.push(`/base/${baseId}/table/${tempId}?creating=1`);
+
+        return [...arr, optimisticItem];
+      });
+
+      return { previous, tempId };
+    },  
+    
+    onSuccess: async ({ id }, _vars, ctx) => {
+      // swap temp id -> real id in cache
+      utils.table.listByBase.setData({ baseId }, (old) => {
+        if (!old) return old;
+        return old.map((t) =>
+          t.id === ctx?.tempId ? { ...t, id } : t
+        );
+      });
+
+      void Promise.all([
         utils.column.listByTable.invalidate({ tableId: id }),
         utils.row.list.invalidate({ tableId: id, skip: 0, take: 200 }),
       ]);
-      router.push(`/base/${baseId}/table/${id}`);
+
+      router.replace(`/base/${baseId}/table/${id}`);
     },
-    onError: (err) => {
-      console.error("create table failed", err);
-      alert("Failed to create tail :pensive:");
+
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) {
+        utils.table.listByBase.setData({ baseId }, ctx.previous);
+      }
     },
+
+    onSettled: () => void utils.table.listByBase.invalidate({ baseId }),
   });
 
   if (tablesQ.isLoading) {
@@ -56,7 +93,6 @@ export default function TableTabs({
                 <button
                   onClick={() => router.push(`/base/${baseId}/table/${t.id}`)}
                   title={t.name}
-                  aria-selected={isActive}
                   className={[
                     "h-full text-[13px] leading-none flex items-center justify-center select-none",
                     // width: 84 when active, 64 when inactive
@@ -87,6 +123,7 @@ export default function TableTabs({
               create.mutate({
                 baseId,
                 name: `Table ${(tablesQ.data?.length ?? 0) + 1}`,
+                
               })
             }
             aria-label="Add table"
@@ -107,3 +144,4 @@ export default function TableTabs({
     </div>
   );
 }
+

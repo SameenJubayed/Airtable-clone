@@ -5,7 +5,7 @@ import { useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { CellRecord, EditingKey, ColMeta } from "./types";
 import { COL_W, MIN_COL_W, ROWNUM_W } from "./constants";
-import { api } from "~/trpc/react";
+import type { api } from "~/trpc/react";
 
 type MakeColsArgs = {
   columnsData: { id: string; name: string; type: "TEXT" | "NUMBER" }[] | undefined;

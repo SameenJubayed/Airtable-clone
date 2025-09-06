@@ -6,14 +6,19 @@ import { type ColumnSizingState } from "@tanstack/react-table";
 import { api } from "~/trpc/react";
 import type { CellRecord, EditingKey } from "./types";
 import type { RouterOutputs } from "~/trpc/react";
+import { isCuid } from "./isCuid";
 
 type RowList = RouterOutputs["row"]["list"];
 type ColumnLite = { id: string; name: string; type: "TEXT" | "NUMBER" };
 
 export function useGridData(tableId: string) {
+  const enabled = isCuid(tableId); // don't run queries with temp ids
   const key = { tableId, skip: 0, take: 200 } as const;
-  const columnsQ = api.column.listByTable.useQuery({ tableId });
-  const rowsQ = api.row.list.useQuery(key);
+  const columnsQ = api.column.listByTable.useQuery(
+    { tableId },
+    { enabled }               // ⬅️ don't run until we have a real id
+  );
+  const rowsQ = api.row.list.useQuery(key, { enabled });
 
   // Convert server rows+cells -> table rows
   const data: CellRecord[] = useMemo(() => {
@@ -28,7 +33,7 @@ export function useGridData(tableId: string) {
     return Array.from(map.values());
   }, [rowsQ.data]);
 
-  return { key, columnsQ, rowsQ, data };
+  return { columnsQ, rowsQ, data };
 }
 
 export function useColumnSizingState() {

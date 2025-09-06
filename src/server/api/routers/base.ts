@@ -22,7 +22,7 @@ export const baseRouter = createTRPCRouter({
 
   createWithDefaults: protectedProcedure
   .input(z.object({ name: z.string().optional() }))
-  .mutation(async ({ ctx, input }) => {
+  .mutation(async ({ ctx }) => {
     // create base
     const base = await ctx.db.base.create({
       data: {

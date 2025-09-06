@@ -5,6 +5,7 @@
 import { useGridData, useColumnSizingState, useEditingKey, useOptimisticCreateRow, useOptimisticUpdateCell } from "./hooks";
 import { useDynamicColumns, useRowNumberColumn } from "./columns";
 import TableView from "./tableView";
+import { isCuid } from "./isCuid";
 // MUI ICONS
 import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
 import FilterListOutlinedIcon from '@mui/icons-material/FilterListOutlined';
@@ -18,7 +19,7 @@ import DvrOutlinedIcon from '@mui/icons-material/DvrOutlined';
 
 
 export default function BaseGrid({ tableId }: { tableId: string }) {
-  const { key, columnsQ, rowsQ, data } = useGridData(tableId);
+  const { columnsQ, rowsQ, data } = useGridData(tableId);
   const { columnSizing, setColumnSizing } = useColumnSizingState();
   const { editingKey, setEditingKey } = useEditingKey();
 
@@ -35,6 +36,14 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
 
   const columns = [rowNumCol, ...dynamicCols];
   const loading = columnsQ.isLoading || rowsQ.isLoading;
+
+  const creatingOptimistic = !isCuid(tableId);
+
+  if (creatingOptimistic) {
+    return (
+      <div className="p-4 text-sm text-gray-500">Creating table…</div>
+    );
+  }
 
   return (
     <>
