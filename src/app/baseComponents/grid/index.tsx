@@ -45,6 +45,7 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
     editingKey,
     setEditingKey,
     updateCell,
+    tableId,
   });
   ////////////////////// RESPONSIVE TOOLBAR SIZE ///////////////////////////////
   const [compact, setCompact] = useState(false);

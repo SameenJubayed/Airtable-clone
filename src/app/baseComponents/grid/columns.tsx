@@ -1,17 +1,21 @@
 // app/baseComponents/grid/columns.tsx
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { CellRecord, EditingKey, ColMeta } from "./types";
 import { COL_W, MIN_COL_W, ROWNUM_W } from "./constants";
-import type { api } from "~/trpc/react";
+import ColumnHeaderMenu from "./ColumnHeaderMenu";
+import FieldPanel from "./FieldPanel";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import { api } from "~/trpc/react";
 
 type MakeColsArgs = {
   columnsData: { id: string; name: string; type: "TEXT" | "NUMBER"; width: number }[] | undefined;
   editingKey: EditingKey;
   setEditingKey: (k: EditingKey) => void;
   updateCell: ReturnType<typeof api.row.updateCell.useMutation>;
+  tableId?: string;
 };
 
 export function useRowNumberColumn(): ColumnDef<CellRecord, unknown> {
@@ -39,20 +43,113 @@ export function useRowNumberColumn(): ColumnDef<CellRecord, unknown> {
   );
 }
 
+function HeaderWithMenu({
+  tableId,
+  col,
+  position,
+}: {
+  tableId: string;
+  col: { id: string; name: string; type: "TEXT" | "NUMBER" };
+  position: number;
+}) {
+  const utils = api.useUtils();
+  const del = api.column.delete.useMutation();
+
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [hover, setHover] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [panel, setPanel] = useState<null | { mode: "create" | "edit"; align: "leftEdge" | "rightEdge"; pos?: number }>(null);
+
+  const rect = ref.current?.getBoundingClientRect() ?? null;
+
+  return (
+    <>
+      <div
+        ref={ref}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setMenuOpen(true);
+        }}
+        className={[
+          "flex items-center justify-between gap-2 overflow-hidden rounded-[2px]",
+          hover ? "bg-gray-100" : "",
+        ].join(" ")}
+      >
+        <span className="font-bold truncate">{col.name}</span>
+        <button
+          type="button"
+          onClick={() => setMenuOpen((v) => !v)}
+          className={[
+            "shrink-0 inline-flex items-center justify-center h-6 w-6 rounded",
+            hover ? "opacity-100" : "opacity-0",
+            "transition-opacity cursor-pointer",
+          ].join(" ")}
+          aria-label="Field menu"
+          title="Field menu"
+        >
+          <ExpandMoreIcon fontSize="small" />
+        </button>
+      </div>
+
+      <ColumnHeaderMenu
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        anchorRect={rect}
+        // column={{ ...col, position }}
+        onEdit={() => setPanel({ mode: "edit", align: "leftEdge" })}
+        onInsertLeft={() => setPanel({ mode: "create", align: "leftEdge", pos: position })}
+        onInsertRight={() => setPanel({ mode: "create", align: "rightEdge", pos: position + 1 })}
+        onDelete={async () => {
+          await del.mutateAsync({ columnId: col.id });
+          await utils.column.listByTable.invalidate({ tableId });
+          await utils.row.list.invalidate({ tableId, skip: 0, take: 200 });
+        }}
+        // Optional stubs (wire when you implement)
+        onDuplicate={undefined}
+        onSortAsc={undefined}
+        onSortDesc={undefined}
+        onFilter={undefined}
+        onHide={undefined}
+      />
+
+      {panel && (
+        <FieldPanel
+          tableId={tableId}
+          open
+          onClose={() => setPanel(null)}
+          anchorRect={rect}
+          align={panel.align}
+          mode={panel.mode}
+          initial={
+            panel.mode === "edit"
+              ? { columnId: col.id, name: col.name, type: col.type, position }
+              : { position: panel.pos }
+          }
+        />
+      )}
+    </>
+  );
+}
+
 export function useDynamicColumns({
   columnsData,
   editingKey,
   setEditingKey,
   updateCell,
+  tableId = ""
 }: MakeColsArgs) {
   return useMemo<ColumnDef<CellRecord, unknown>[]>(() => {
     if (!columnsData) return [];
     return columnsData.map((col, idx) => ({
       id: col.id,
       header: () => (
-        <div className="flex items-center gap-2 overflow-hidden">
-          <span className="font-bold truncate">{col.name}</span>
-        </div>
+        <HeaderWithMenu
+          tableId={tableId}
+          col={{ id: col.id, name: col.name, type: col.type }}
+          position={idx}
+        />
       ),
       // tell TanStack to read row[col.id] for this column's value
       accessorKey: col.id,
@@ -124,5 +221,6 @@ export function useDynamicColumns({
         );
       },
     }));
-  }, [columnsData, editingKey, setEditingKey, updateCell]);
+  }, [columnsData, editingKey, setEditingKey, updateCell, tableId]);
 }
+

@@ -100,7 +100,7 @@ export default function TableView({
                   <th
                     key={h.id}
                     className={[
-                      "relative px-3",         
+                      "relative pl-2",         
                       // uniform borders like body
                       "border border-gray-300",
                       // remove top border (avoid thicker top edge)
