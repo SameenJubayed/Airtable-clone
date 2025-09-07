@@ -268,3 +268,40 @@ export function useOptimisticAddColumn(
     },
   });
 }
+
+export function useRowHeight(tableId: string) {
+  const enabled = isCuid(tableId);
+  const utils = api.useUtils();
+
+  const prefsQ = api.table.getUiPrefs.useQuery({ tableId }, { enabled });
+
+  const rowHeight = prefsQ.data?.rowHeight ?? 32; // default 32px
+
+  const setHeight = api.table.setRowHeight.useMutation({
+    onMutate: async ({rowHeight}) => {
+      await utils.table.getUiPrefs.cancel({ tableId });
+
+      const prev = utils.table.getUiPrefs.getData({ tableId });
+      utils.table.getUiPrefs.setData({ tableId }, (old) =>
+        old ? { ...old, rowHeight } : { id: tableId, rowHeight }
+      );
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) {
+        utils.table.getUiPrefs.setData({ tableId }, ctx.prev);
+      }
+    },
+    onSettled: () => {
+      void utils.table.getUiPrefs.invalidate({ tableId });
+    },
+  });
+
+  const setRowHeight = (h: number) => {
+    // clamp client-side too
+    const clamped = Math.max(32, Math.min(128, Math.round(h)));
+    setHeight.mutate({ tableId, rowHeight: clamped });
+  };
+
+  return { rowHeight, setRowHeight, loading: !prefsQ.data && prefsQ.isLoading };
+}
