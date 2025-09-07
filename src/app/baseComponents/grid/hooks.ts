@@ -196,14 +196,24 @@ export function useOptimisticAddColumn(
       const tempId = `optimistic-col-${Date.now()}`;
       const now = new Date();
 
-      // 1) Optimistically append the column
+      // 1) Optimistically insert the column
       utils.column.listByTable.setData(colKey, (old) => {
-        const arr = (old ?? []);
-        const position = arr.length;
-        return [
-          ...arr,
-          { id: tempId, name: vars.name, type: vars.type, position },
-        ] as ColumnItem[];
+        const current = (old ?? []);
+
+        // clamp desired index; default to append when not provided
+        const desired =
+          typeof (vars).position === "number" 
+            ? Math.max(0, Math.min((vars).position, current.length))
+            : current.length;
+
+        // build new array with the temp column inserted
+        const next = [
+          ...current.slice(0, desired),
+          { id: tempId, name: vars.name, type: vars.type, position: desired } as ColumnItem,
+          ...current.slice(desired),
+        ].map((c, idx) => ({ ...c, position: idx })); // reindex positions
+
+        return next;
       });
 
       // 2) Optimistically add empty cells for existing rows

@@ -4,12 +4,17 @@
 import { useRef, useState } from "react";
 import AddIcon from "@mui/icons-material/Add";
 import FieldEditorPopover from "./FieldEditorPopover";
+import { useOptimisticAddColumn } from "./hooks";
 
 type Props = { tableId: string };
 
 export default function AddFieldButton({ tableId }: Props) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement | null>(null);
+
+  const addColumn = useOptimisticAddColumn(tableId, {
+    onOptimisticApplied: () => setOpen(false),
+  });
 
   return (
     <div className="relative h-full w-full flex items-center justify-center">
@@ -32,6 +37,9 @@ export default function AddFieldButton({ tableId }: Props) {
         align="auto" // same smart behavior you had before
         mode="create"
         labels={{ titleCreate: "Create field", btnCreate: "Create field" }}
+        onCreate={({ name, type, position }) => {
+          addColumn.mutate({ tableId, name, type, position });
+        }}
       />
     </div>
   );

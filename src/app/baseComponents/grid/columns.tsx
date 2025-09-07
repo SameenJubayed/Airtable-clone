@@ -5,6 +5,7 @@ import { useMemo, useRef, useState } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 import type { CellRecord, EditingKey, ColMeta } from "./types";
 import { COL_W, MIN_COL_W, ROWNUM_W } from "./constants";
+import { useOptimisticAddColumn } from "./hooks";
 import ColumnHeaderMenu from "./ColumnHeaderMenu";
 import FieldPanel from "./FieldPanel";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
@@ -43,17 +44,17 @@ export function useRowNumberColumn(): ColumnDef<CellRecord, unknown> {
   );
 }
 
-function HeaderWithMenu({
-  tableId,
-  col,
-  position,
-}: {
+function HeaderWithMenu({tableId, col, position}: {
   tableId: string;
   col: { id: string; name: string; type: "TEXT" | "NUMBER" };
   position: number;
 }) {
   const utils = api.useUtils();
   const del = api.column.delete.useMutation();
+
+  const addColumn = useOptimisticAddColumn(tableId, {
+    onOptimisticApplied: () => setPanel(null),
+  });
 
   const ref = useRef<HTMLDivElement | null>(null);
   const [hover, setHover] = useState(false);
@@ -127,6 +128,14 @@ function HeaderWithMenu({
               ? { columnId: col.id, name: col.name, type: col.type, position }
               : { position: panel.pos }
           }
+          onCreate={({ name, type, position: pos }) => {
+            addColumn.mutate({
+              tableId,
+              name,
+              type,
+              position: pos, // left = position, right = position+1 passed in initial
+            });
+          }}
         />
       )}
     </>

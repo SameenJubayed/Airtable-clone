@@ -47,6 +47,9 @@ export type FieldEditorPopoverProps = {
     btnCreate: string;
     btnSave: string;
   }>;
+
+  /** Optional callback on create */
+  onCreate?: (vars: { name: string; type: FieldType; position?: number }) => void;
 };
 
 export default function FieldEditorPopover({
@@ -60,6 +63,7 @@ export default function FieldEditorPopover({
   mode,
   initial,
   labels,
+  onCreate
 }: FieldEditorPopoverProps) {
   const utils = api.useUtils();
 
@@ -74,7 +78,6 @@ export default function FieldEditorPopover({
   }, [open, initial?.name, initial?.type]);
 
   // --- server mutations
-  const add = api.column.add.useMutation();
   const rename = api.column.rename.useMutation();
   const changeType = api.column.changeType.useMutation();
 
@@ -205,12 +208,11 @@ export default function FieldEditorPopover({
     if (!trimmed) return;
 
     if (mode === "create") {
-      await add.mutateAsync({
-        tableId,
-        name: trimmed,
-        type,
-        position: initial?.position,
-      });
+      if (onCreate) {
+        // optimisticCreation
+        onCreate({ name: trimmed, type, position: initial?.position });
+        return; 
+      }
     } else if (initial?.columnId) {
       if (trimmed !== initial.name) {
         await rename.mutateAsync({ columnId: initial.columnId, name: trimmed });

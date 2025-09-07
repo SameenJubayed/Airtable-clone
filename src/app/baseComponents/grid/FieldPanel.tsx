@@ -16,6 +16,7 @@ type Props = {
   align: "leftEdge" | "rightEdge";
   mode: Mode;
   initial?: { columnId?: string; name?: string; type?: FieldType; position?: number };
+  onCreate?: (vars: { name: string; type: "TEXT" | "NUMBER"; position?: number }) => void;
 };
 
 export default function FieldPanel({
@@ -26,6 +27,7 @@ export default function FieldPanel({
   align,
   mode,
   initial,
+  onCreate
 }: Props) {
   // map where we want to allign to
   const mappedAlign =
@@ -45,6 +47,7 @@ export default function FieldPanel({
           ? { titleEdit: "Edit field", btnSave: "Save" }
           : { titleCreate: "Create field", btnCreate: "Create field" }
       }
+      onCreate={onCreate}
     />
   );
 }
