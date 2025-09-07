@@ -2,17 +2,14 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import type { RouterOutputs } from "~/trpc/react";
 import AddIcon from "@mui/icons-material/Add";
 import { api } from "~/trpc/react";
 import Portal from "./Portal";
+import { useOptimisticAddColumn } from "./hooks";
 
 type Props = { tableId: string };
-type RowList = RouterOutputs["row"]["list"];
-type ColumnItem = RouterOutputs["column"]["listByTable"][number];
 
 export default function AddFieldButton({ tableId }: Props) {
-  const utils = api.useUtils();
   const [open, setOpen] = useState(false);
   const [fieldName, setFieldName] = useState("");
   const [fieldType, setFieldType] = useState<"TEXT" | "NUMBER">("TEXT");
@@ -134,95 +131,12 @@ export default function AddFieldButton({ tableId }: Props) {
     };
   }, [open]);
 
-  const addColumn = api.column.add.useMutation({
-    // 🚀 Optimistic add
-    onMutate: async (vars) => {
-      const colKey = { tableId } as const;
-      const rowKey = { tableId, skip: 0, take: 200 } as const;
-
-      // cancel fetches so our writes don't get overwritten
-      await Promise.all([
-        utils.column.listByTable.cancel(colKey),
-        utils.row.list.cancel(rowKey),
-      ]);
-
-      // snapshots for rollback
-      const previousCols = utils.column.listByTable.getData(colKey);
-      const previousRows = utils.row.list.getData(rowKey);
-
-      const tempId = `optimistic-col-${Date.now()}`;
-      const now = new Date();
-
-      // 1) Optimistically append the new column to the column list
-      utils.column.listByTable.setData(colKey, (old) => {
-        const arr = (old ?? []);
-        const position = arr.length;
-        return [
-          ...arr,
-          { id: tempId, name: vars.name, type: vars.type, position },
-        ] as ColumnItem[];
-      });
-
-      if (previousRows) {
-        utils.row.list.setData(rowKey, (old) => {
-          if (!old) return old;
-          return {
-            ...old,
-            cells: [
-              ...old.cells,
-              ...old.rows.map((r) => ({
-                rowId: r.id,
-                columnId: tempId,
-                textValue: null,
-                numberValue: null,
-                createdAt: now,
-                updatedAt: now,
-              })),
-            ],
-          } as RowList;
-        });
-      }
-
-      // Optionally close & reset the UI immediately for snappiness
+  const addColumn = useOptimisticAddColumn(tableId, {
+    onOptimisticApplied: () => {
+      // immediate UI reset for snappiness
       setOpen(false);
       setFieldName("");
       setFieldType("TEXT");
-
-      return { colKey, rowKey, previousCols, previousRows, tempId };
-    },
-
-    
-    onSuccess: ({ id }, _vars, ctx) => {
-      if (!ctx) return;
-      // swap temp id -> real id
-      utils.column.listByTable.setData(ctx.colKey, (old) =>
-        old?.map((c) => (c.id === ctx.tempId ? { ...c, id } : c))
-      );
-      // Update cells that referenced the temp id
-      utils.row.list.setData(ctx.rowKey, (old) => {
-        if (!old) return old;
-        return {
-          ...old,
-          cells: old.cells.map((cell) =>
-            cell.columnId === ctx.tempId ? { ...cell, columnId: id } : cell
-          ),
-        } as RowList;
-      });
-    },
-
-    // rollback on error
-    onError: (_err, _vars, ctx) => {
-      if (!ctx) return;
-      utils.column.listByTable.setData(ctx.colKey, ctx.previousCols);
-      utils.row.list.setData(ctx.rowKey, ctx.previousRows);
-    },
-
-    // final sync
-    onSettled: async () => {
-      await Promise.all([
-        utils.column.listByTable.invalidate({ tableId }),
-        utils.row.list.invalidate({ tableId, skip: 0, take: 200 }),
-      ]);
     },
   });
 

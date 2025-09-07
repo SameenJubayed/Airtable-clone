@@ -10,6 +10,7 @@ import { isCuid } from "./isCuid";
 
 type RowList = RouterOutputs["row"]["list"];
 type ColumnLite = { id: string; name: string; type: "TEXT" | "NUMBER" };
+type ColumnItem = RouterOutputs["column"]["listByTable"][number];
 
 export function useGridData(tableId: string) {
   const enabled = isCuid(tableId); // don't run queries with temp ids
@@ -169,4 +170,101 @@ export function useOptimisticUpdateCell(
   });
 
   return updateCell;
+}
+
+export function useOptimisticAddColumn(
+  tableId: string,
+  opts?: { onOptimisticApplied?: () => void }
+) {
+  const utils = api.useUtils();
+  const colKey = { tableId } as const;
+  const rowKey = { tableId, skip: 0, take: 200 } as const;
+
+  return api.column.add.useMutation({
+    // Optimistic add
+    onMutate: async (vars) => {
+      // Cancel so our writes aren't overwritten by in-flight refetches
+      await Promise.all([
+        utils.column.listByTable.cancel(colKey),
+        utils.row.list.cancel(rowKey),
+      ]);
+
+      // Snapshots for rollback
+      const previousCols = utils.column.listByTable.getData(colKey);
+      const previousRows = utils.row.list.getData(rowKey);
+
+      const tempId = `optimistic-col-${Date.now()}`;
+      const now = new Date();
+
+      // 1) Optimistically append the column
+      utils.column.listByTable.setData(colKey, (old) => {
+        const arr = (old ?? []);
+        const position = arr.length;
+        return [
+          ...arr,
+          { id: tempId, name: vars.name, type: vars.type, position },
+        ] as ColumnItem[];
+      });
+
+      // 2) Optimistically add empty cells for existing rows
+      if (previousRows) {
+        utils.row.list.setData(rowKey, (old) => {
+          if (!old) return old;
+          return {
+            ...old,
+            cells: [
+              ...old.cells,
+              ...old.rows.map((r) => ({
+                rowId: r.id,
+                columnId: tempId,
+                textValue: null,
+                numberValue: null,
+                createdAt: now,
+                updatedAt: now,
+              })),
+            ],
+          } as RowList;
+        });
+      }
+
+      // Let the caller (the button) close/reset its UI immediately
+      opts?.onOptimisticApplied?.();
+
+      return { colKey, rowKey, previousCols, previousRows, tempId };
+    },
+
+    onSuccess: ({ id }, _vars, ctx) => {
+      if (!ctx) return;
+
+      // Swap temp id -> real id in both places
+      utils.column.listByTable.setData(ctx.colKey, (old) =>
+        old?.map((c) => (c.id === ctx.tempId ? { ...c, id } : c))
+      );
+
+      utils.row.list.setData(ctx.rowKey, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          cells: old.cells.map((cell) =>
+            cell.columnId === ctx.tempId ? { ...cell, columnId: id } : cell
+          ),
+        } as RowList;
+      });
+    },
+
+    // rollback on error
+    onError: (_err, _vars, ctx) => {
+      if (!ctx) return;
+      utils.column.listByTable.setData(ctx.colKey, ctx.previousCols);
+      utils.row.list.setData(ctx.rowKey, ctx.previousRows);
+    },
+
+    // Final sync
+    onSettled: async () => {
+      await Promise.all([
+        utils.column.listByTable.invalidate(colKey),
+        utils.row.list.invalidate(rowKey),
+      ]);
+    },
+  });
 }
