@@ -1,11 +1,12 @@
 // app/baseComponents/grid/index.tsx
 "use client";
-
-// If you prefer separate imports:
+import { useEffect, useRef } from "react";
 import { useGridData, useColumnSizingState, useEditingKey, useOptimisticCreateRow, useOptimisticUpdateCell } from "./hooks";
 import { useDynamicColumns, useRowNumberColumn } from "./columns";
 import TableView from "./tableView";
 import { isCuid } from "./isCuid";
+import { api } from "~/trpc/react";
+import { COL_W } from "./constants";
 // MUI ICONS
 import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
 import FilterListOutlinedIcon from '@mui/icons-material/FilterListOutlined';
@@ -19,21 +20,81 @@ import DvrOutlinedIcon from '@mui/icons-material/DvrOutlined';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
 
+
 export default function BaseGrid({ tableId }: { tableId: string }) {
   const { columnsQ, rowsQ, data } = useGridData(tableId);
   const { columnSizing, setColumnSizing } = useColumnSizingState();
   const { editingKey, setEditingKey } = useEditingKey();
+  const utils = api.useUtils();
 
   const updateCell = useOptimisticUpdateCell(tableId, rowsQ);
   const createRow = useOptimisticCreateRow(tableId, columnsQ, rowsQ);
 
   const rowNumCol = useRowNumberColumn();
   const dynamicCols = useDynamicColumns({
-    columnsData: columnsQ.data?.map((c) => ({ id: c.id, name: c.name, type: c.type })),
+    columnsData: columnsQ.data?.map((c) => ({ id: c.id, name: c.name, type: c.type, width: c.width })),
     editingKey,
     setEditingKey,
     updateCell,
   });
+
+  ////////////////////// COLUMN RESIZING + PERSISTENCE /////////////////////////
+  const saveWidth = api.column.setWidth.useMutation();
+  // Debounced saver that only sends changed widths since last save
+  const debounceRef = useRef<number | null>(null);
+  const lastSavedRef = useRef<Record<string, number>>({});
+
+  // Init columnSizing once per tableId from DB widths
+  const lastInitFor = useRef<string | null>(null);
+  useEffect(() => {
+    const cols = columnsQ.data;
+    if (!cols?.length) return; 
+    if (lastInitFor.current === tableId) return;
+    const initial: Record<string, number> =
+      Object.fromEntries(cols.map((c) => [c.id, (c.width ?? COL_W)]) );
+    setColumnSizing(initial);
+    // remember what we initialized so we don't fight refetches
+    lastInitFor.current = tableId;
+    // also cache the last saved values baseline
+    lastSavedRef.current = initial;
+  }, [tableId, columnsQ.data, setColumnSizing]);
+
+  useEffect(() => {
+    if (lastInitFor.current !== tableId) return; // not initialized yet
+    if (!columnsQ.data) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    debounceRef.current = window.setTimeout(() => {
+      // run async work in an IIFE so setTimeout callback itself returns void
+      void (async () => {
+        const changed: Array<[string, number]> = [];
+        for (const [columnId, width] of Object.entries(columnSizing)) {
+          const w = Math.round(width);
+          if (w !== lastSavedRef.current[columnId]) {
+            changed.push([columnId, w]);
+          }
+        }
+        if (!changed.length) return;
+
+        // batch the network writes
+        await Promise.all(
+          changed.map(([columnId, width]) => saveWidth.mutateAsync({ columnId, width }))
+        );
+
+        // record baseline so subsequent effects don't resend
+        changed.forEach(([id, w]) => { lastSavedRef.current[id] = w; });
+
+        // keep the listByTable cache in sync so widths "stick" on tab changes
+        utils.column.listByTable.setData({ tableId }, (old) =>
+          old?.map((c) => (c.id in columnSizing ? { ...c, width: Math.round(columnSizing[c.id]!) } : c))
+        );
+      })();
+    }, 250); // send once shortly after the drag ends
+
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [columnSizing, tableId, columnsQ.data, saveWidth, utils.column.listByTable]);
+
+  //////////////////////////////////////////////////////////////////////////////
 
   const columns = [rowNumCol, ...dynamicCols];
   const loading = columnsQ.isLoading || rowsQ.isLoading;

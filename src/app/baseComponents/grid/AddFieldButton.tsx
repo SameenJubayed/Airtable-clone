@@ -3,7 +3,6 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import AddIcon from "@mui/icons-material/Add";
-import { api } from "~/trpc/react";
 import Portal from "./Portal";
 import { useOptimisticAddColumn } from "./hooks";
 

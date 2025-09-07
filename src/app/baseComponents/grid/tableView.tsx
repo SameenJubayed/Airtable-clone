@@ -10,7 +10,7 @@ import {
   type ColumnSizingState,
 } from "@tanstack/react-table";
 import type { CellRecord, ColMeta } from "./types";
-import { ROW_H, ADD_FIELD_W } from "./constants";
+import { ROW_H, ADD_FIELD_W, MIN_COL_W } from "./constants";
 import AddIcon from "@mui/icons-material/Add";
 import AddFieldButton from "./AddFieldButton";
 
@@ -33,7 +33,19 @@ export default function TableView({
 }: Props) {  
   // wrapper so tanstack can pass either a value or an updater without recreating a new function each render
   const handleColumnSizingChange = useCallback(
-    (updater: SetStateAction<ColumnSizingState>) => setColumnSizing(updater),
+    (updater: SetStateAction<ColumnSizingState>) => {
+      setColumnSizing((prev) => {
+        const next =
+          typeof updater === "function" ? (updater as (s: ColumnSizingState) => ColumnSizingState)(prev) : updater;
+        const clamped: ColumnSizingState = {};
+        for (const [colId, w] of Object.entries(next)) {
+          // TanStack stores widths as numbers; ensure number + clamp
+          const n = Math.max(MIN_COL_W, Math.round(Number(w)));
+          clamped[colId] = n;
+        }
+        return clamped;
+      });
+    },
     [setColumnSizing]
   );
 
@@ -45,6 +57,7 @@ export default function TableView({
     columnResizeMode: "onChange",
     state: { columnSizing },
     onColumnSizingChange: handleColumnSizingChange,
+    defaultColumn: { minSize: MIN_COL_W },
   });
 
   // compute widths once per render from TanStack

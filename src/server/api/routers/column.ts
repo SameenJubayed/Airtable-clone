@@ -14,7 +14,7 @@ export const columnRouter = createTRPCRouter({
       return ctx.db.column.findMany({
         where: { tableId: input.tableId },
         orderBy: { position: "asc" },
-        select: { id: true, name: true, type: true, position: true, Width: true },
+        select: { id: true, name: true, type: true, position: true, width: true },
       });
     }),
     
@@ -90,7 +90,6 @@ export const columnRouter = createTRPCRouter({
       });
     }),
 
-
   /**
    * Change column type (TEXT <-> NUMBER).
    * Clears the incompatible value in cells for that column to keep DB clean.
@@ -123,7 +122,7 @@ export const columnRouter = createTRPCRouter({
   setWidth: protectedProcedure
     .input(z.object({
       columnId: z.string().cuid(),
-      width: z.number().int().min(40).max(1000),
+      width: z.number().int().min(60).max(1000),
     }))
     .mutation(async ({ input, ctx }) => {
       // auth via join
@@ -133,8 +132,8 @@ export const columnRouter = createTRPCRouter({
       });
       const updated = await ctx.db.column.update({
         where: { id: input.columnId },
-        data: { Width: input.width },
-        select: { id: true, Width: true },
+        data: { width: input.width },
+        select: { id: true, width: true },
       });
       return updated;
     }),

@@ -8,7 +8,7 @@ import { COL_W, MIN_COL_W, ROWNUM_W } from "./constants";
 import type { api } from "~/trpc/react";
 
 type MakeColsArgs = {
-  columnsData: { id: string; name: string; type: "TEXT" | "NUMBER" }[] | undefined;
+  columnsData: { id: string; name: string; type: "TEXT" | "NUMBER"; width: number }[] | undefined;
   editingKey: EditingKey;
   setEditingKey: (k: EditingKey) => void;
   updateCell: ReturnType<typeof api.row.updateCell.useMutation>;
@@ -57,7 +57,7 @@ export function useDynamicColumns({
       // tell TanStack to read row[col.id] for this column's value
       accessorKey: col.id,
       // defaul col width 180
-      size: COL_W,
+      size: col.width ?? COL_W,
       // min possible size 60
       minSize: MIN_COL_W,
       meta: (idx === 0

@@ -69,7 +69,7 @@ model Column {
     name      String
     type      FieldType
     position  Int       @default(0) // for left→right ordering
-    Width     Int       @default(180) // Each column default 180px wide
+    width     Int       @default(180) // Each column default 180px wide
 
     createdAt DateTime  @default(now())
     updatedAt DateTime  @updatedAt
