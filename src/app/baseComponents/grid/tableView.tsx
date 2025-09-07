@@ -54,10 +54,10 @@ export default function TableView({
     columns,
     getCoreRowModel: getCoreRowModel(),
     // for column resizing
-    columnResizeMode: "onChange",
-    state: { columnSizing },
-    onColumnSizingChange: handleColumnSizingChange,
-    defaultColumn: { minSize: MIN_COL_W },
+    columnResizeMode: "onChange", // fire updates as user drags
+    state: { columnSizing }, // controlled state
+    onColumnSizingChange: handleColumnSizingChange, // updates our state and sets min 60px width
+    defaultColumn: { minSize: MIN_COL_W },  // enforce min size
   });
 
   // compute widths once per render from TanStack

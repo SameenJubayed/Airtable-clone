@@ -49,6 +49,7 @@ model Table {
 
     name      String   @default("Untitled Table")
     position  Int      @default(0)
+    rowHeight Int      @default(32) // in px, default 32px applies to whole table
 
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt

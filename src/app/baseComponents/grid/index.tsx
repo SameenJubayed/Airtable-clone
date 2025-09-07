@@ -18,8 +18,7 @@ import IosShareOutlinedIcon from '@mui/icons-material/IosShareOutlined';
 import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import DvrOutlinedIcon from '@mui/icons-material/DvrOutlined';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-
-
+import FormatLineSpacingIcon from '@mui/icons-material/FormatLineSpacing';
 
 export default function BaseGrid({ tableId }: { tableId: string }) {
   const { columnsQ, rowsQ, data } = useGridData(tableId);
@@ -60,7 +59,7 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
   }, [tableId, columnsQ.data, setColumnSizing]);
 
   useEffect(() => {
-    if (lastInitFor.current !== tableId) return; // not initialized yet
+    if (lastInitFor.current !== tableId) return; // not initialized yet, dont run
     if (!columnsQ.data) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
@@ -76,7 +75,7 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
         }
         if (!changed.length) return;
 
-        // batch the network writes
+        // batch writes to avoid N calls-per-frame
         await Promise.all(
           changed.map(([columnId, width]) => saveWidth.mutateAsync({ columnId, width }))
         );
@@ -84,12 +83,12 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
         // record baseline so subsequent effects don't resend
         changed.forEach(([id, w]) => { lastSavedRef.current[id] = w; });
 
-        // keep the listByTable cache in sync so widths "stick" on tab changes
+        // keep the listByTable cache in sync so it updates immediately 
         utils.column.listByTable.setData({ tableId }, (old) =>
           old?.map((c) => (c.id in columnSizing ? { ...c, width: Math.round(columnSizing[c.id]!) } : c))
         );
       })();
-    }, 250); // send once shortly after the drag ends
+    }, 250); // run 250ms after the last drag update
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [columnSizing, tableId, columnsQ.data, saveWidth, utils.column.listByTable]);
@@ -135,32 +134,35 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
 
           {/* RIGHT: everything else, aligned to the far right */}
           <div className="ml-auto flex items-center gap-1">
-            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-2 cursor-pointer" title="Hide fields">
+            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-1 cursor-pointer">
               <VisibilityOffOutlinedIcon fontSize="small" />
               <span className="text-[13px]">Hide fields</span>
             </button>
 
-            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-2 cursor-pointer" title="Filter">
+            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-1 cursor-pointer">
               <FilterListOutlinedIcon fontSize="small" />
               <span className="text-[13px]">Filter</span>
             </button>
 
-            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-2 cursor-pointer" title="Group">
+            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-1 cursor-pointer">
               <DvrOutlinedIcon fontSize="small" />
               <span className="text-[13px]">Group</span>
             </button>
 
-            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-2 cursor-pointer" title="Sort">
+            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-1 cursor-pointer">
               <SwapVertIcon fontSize="small" />
               <span className="text-[13px]">Sort</span>
             </button>
 
-            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-2 cursor-pointer" title="Color">
+            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-1 cursor-pointer">
               <FormatColorFillOutlinedIcon fontSize="small" />
               <span className="text-[13px]">Color</span>
             </button>
+            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-1 cursor-pointer" title="Row height">
+              <FormatLineSpacingIcon fontSize="small" />
+            </button>
 
-            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-2 cursor-pointer" title="Share and sync">
+            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-1 cursor-pointer" title="Share view">
               <IosShareOutlinedIcon fontSize="small" />
               <span className="text-[13px]">Share and sync</span>
             </button>

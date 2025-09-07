@@ -112,6 +112,35 @@ export const tableRouter = createTRPCRouter({
         data: { name: input.name },
         select: { id: true, name: true, updatedAt: true },
       });
-    })
+    }),
+
+  // Get UI prefs (row height for now ay)
+  getUiPrefs: protectedProcedure
+    .input(z.object({ tableId: z.string().cuid() }))
+    .query(async ({ input, ctx }) => {
+      const t = await ctx.db.table.findFirstOrThrow({
+        where: { id: input.tableId, base: { createdById: ctx.session.user.id } },
+        select: { id: true, rowHeight: true },
+      });
+      return t;
+    }),
+
+// Set row height (persist)
+setRowHeight: protectedProcedure
+  .input(z.object({
+    tableId: z.string().cuid(),
+    rowHeight: z.number().int().min(32).max(128), 
+  }))
+  .mutation(async ({ input, ctx }) => {
+    const t = await ctx.db.table.findFirstOrThrow({
+      where: { id: input.tableId, base: { createdById: ctx.session.user.id } },
+      select: { id: true },
+    });
+    return ctx.db.table.update({
+      where: { id: t.id },
+      data: { rowHeight: input.rowHeight },
+      select: { id: true, rowHeight: true },
+    });
+  }),
 
 });
