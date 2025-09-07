@@ -96,7 +96,6 @@ export const tableRouter = createTRPCRouter({
       return { tableId: t?.id ?? null };
     }),
 
-    
   rename: protectedProcedure
     .input(z.object({ tableId: z.string().cuid(), name: z.string().trim().min(1) }))
     .mutation(async ({ input, ctx }) => {
@@ -125,22 +124,22 @@ export const tableRouter = createTRPCRouter({
       return t;
     }),
 
-// Set row height (persist)
-setRowHeight: protectedProcedure
-  .input(z.object({
-    tableId: z.string().cuid(),
-    rowHeight: z.number().int().min(32).max(128), 
-  }))
-  .mutation(async ({ input, ctx }) => {
-    const t = await ctx.db.table.findFirstOrThrow({
-      where: { id: input.tableId, base: { createdById: ctx.session.user.id } },
-      select: { id: true },
-    });
-    return ctx.db.table.update({
-      where: { id: t.id },
-      data: { rowHeight: input.rowHeight },
-      select: { id: true, rowHeight: true },
-    });
-  }),
+  // Set row height (persist)
+  setRowHeight: protectedProcedure
+    .input(z.object({
+      tableId: z.string().cuid(),
+      rowHeight: z.number().int().min(32).max(128), 
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const t = await ctx.db.table.findFirstOrThrow({
+        where: { id: input.tableId, base: { createdById: ctx.session.user.id } },
+        select: { id: true },
+      });
+      return ctx.db.table.update({
+        where: { id: t.id },
+        data: { rowHeight: input.rowHeight },
+        select: { id: true, rowHeight: true },
+      });
+    }),
 
 });

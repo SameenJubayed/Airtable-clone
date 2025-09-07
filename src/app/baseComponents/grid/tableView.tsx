@@ -21,6 +21,7 @@ type Props = {
   columnSizing: ColumnSizingState;
   setColumnSizing: Dispatch<SetStateAction<ColumnSizingState>>;
   onAddRow: () => void;
+  rowHeight: number; 
 };
 
 export default function TableView({ 
@@ -30,6 +31,7 @@ export default function TableView({
   columnSizing, 
   setColumnSizing,
   onAddRow,
+  rowHeight
 }: Props) {  
   // wrapper so tanstack can pass either a value or an updater without recreating a new function each render
   const handleColumnSizingChange = useCallback(
@@ -155,7 +157,7 @@ export default function TableView({
                       colIdx === 0 ? "border-l-0" : "",
                       tdExtra
                     ].join(" ")}
-                    style={{ height: ROW_H }}
+                    style={{ height: rowHeight }}
                   >
                     {flexRender(c.column.columnDef.cell, c.getContext())}
                   </td>

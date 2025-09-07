@@ -1,12 +1,21 @@
 // app/baseComponents/grid/index.tsx
 "use client";
-import { useEffect, useRef } from "react";
-import { useGridData, useColumnSizingState, useEditingKey, useOptimisticCreateRow, useOptimisticUpdateCell } from "./hooks";
+import { useEffect, useState, useRef } from "react";
+import {
+  useGridData,
+  useColumnSizingState, 
+  useEditingKey, 
+  useOptimisticCreateRow, 
+  useOptimisticUpdateCell, 
+  useRowHeight 
+} from "./hooks";
 import { useDynamicColumns, useRowNumberColumn } from "./columns";
 import TableView from "./tableView";
+import RowHeightMenu from "./RowHeightMenu";
 import { isCuid } from "./isCuid";
 import { api } from "~/trpc/react";
-import { COL_W } from "./constants";
+import { COL_W, ROW_H, ROW_H_MED, ROW_H_TALL, ROW_H_XT } from "./constants";
+
 // MUI ICONS
 import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
 import FilterListOutlinedIcon from '@mui/icons-material/FilterListOutlined';
@@ -23,6 +32,7 @@ import FormatLineSpacingIcon from '@mui/icons-material/FormatLineSpacing';
 export default function BaseGrid({ tableId }: { tableId: string }) {
   const { columnsQ, rowsQ, data } = useGridData(tableId);
   const { columnSizing, setColumnSizing } = useColumnSizingState();
+
   const { editingKey, setEditingKey } = useEditingKey();
   const utils = api.useUtils();
 
@@ -36,6 +46,36 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
     setEditingKey,
     updateCell,
   });
+  ////////////////////// RESPONSIVE TOOLBAR SIZE ///////////////////////////////
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    const BREAKPOINT = 900; // px. adjust to your liking
+    const onResize = () => setCompact(window.innerWidth < BREAKPOINT);
+    onResize(); // initialize
+    window.addEventListener("resize", onResize, { passive: true });
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // Helper to build button class depending on compact mode
+  const topBtnClass = (extra = "") =>
+    [
+      "h-8 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center cursor-pointer",
+      compact ? "w-8 px-0 justify-center" : "px-2 gap-1",
+      extra,
+    ].join(" ");
+
+  ////////////////////// ROW HEIGHT + PERSISTENCE //////////////////////////////
+  const { rowHeight, setRowHeight } = useRowHeight(tableId);
+  // row-height menu state + anchor
+  const [rhOpen, setRhOpen] = useState(false);
+  const rhBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  const heightOptions = [
+    { label: "Short",     value: ROW_H },
+    { label: "Medium",    value: ROW_H_MED },
+    { label: "Tall",      value: ROW_H_TALL },
+    { label: "Extra Tall",value: ROW_H_XT },
+  ];
 
   ////////////////////// COLUMN RESIZING + PERSISTENCE /////////////////////////
   const saveWidth = api.column.setWidth.useMutation();
@@ -114,7 +154,7 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
           {/* LEFT: menu + view selector */}
           <div className="flex items-center gap-1">
             <button
-              className="h-8 w-8 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center justify-center cursor-pointer"
+              className={topBtnClass("w-8")} 
               aria-label="Table menu"
               title="Table menu"
             >
@@ -122,6 +162,7 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
             </button>
 
             <button
+            
               className="h-8 px-2 rounded-sm hover:bg-gray-100 text-gray-600 flex items-center gap-2 cursor-pointer"
               aria-haspopup="menu"
               title="Change view"
@@ -134,44 +175,62 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
 
           {/* RIGHT: everything else, aligned to the far right */}
           <div className="ml-auto flex items-center gap-1">
-            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-1 cursor-pointer">
+            <button className={topBtnClass()} title="Hide fields" aria-label="Hide fields">
               <VisibilityOffOutlinedIcon fontSize="small" />
-              <span className="text-[13px]">Hide fields</span>
+              {!compact && <span className="text-[13px]">Hide fields</span>}
             </button>
 
-            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-1 cursor-pointer">
+            <button className={topBtnClass()} title="Filter" aria-label="Filter">
               <FilterListOutlinedIcon fontSize="small" />
-              <span className="text-[13px]">Filter</span>
+              {!compact && <span className="text-[13px]">Filter</span>}
             </button>
 
-            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-1 cursor-pointer">
+            <button className={topBtnClass()} title="Group" aria-label="Group">
               <DvrOutlinedIcon fontSize="small" />
-              <span className="text-[13px]">Group</span>
+              {!compact && <span className="text-[13px]">Group</span>}
             </button>
 
-            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-1 cursor-pointer">
+            <button className={topBtnClass()} title="Sort" aria-label="Sort">
               <SwapVertIcon fontSize="small" />
-              <span className="text-[13px]">Sort</span>
+              {!compact && <span className="text-[13px]">Sort</span>}
             </button>
 
-            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-1 cursor-pointer">
+            <button className={topBtnClass()} title="Color" aria-label="Color">
               <FormatColorFillOutlinedIcon fontSize="small" />
-              <span className="text-[13px]">Color</span>
+              {!compact && <span className="text-[13px]">Color</span>}
             </button>
-            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-1 cursor-pointer" title="Row height">
+
+            <button 
+              ref={rhBtnRef}
+              className={topBtnClass()}
+              title="Row height" 
+              aria-label="row-height-menu"
+              onClick={() => setRhOpen((v) => !v)}
+              aria-haspopup="menu"
+              aria-expanded={rhOpen}
+            >
               <FormatLineSpacingIcon fontSize="small" />
             </button>
 
-            <button className="h-8 px-2 rounded-sm text-gray-500 hover:bg-gray-100 flex items-center gap-1 cursor-pointer" title="Share view">
+            <RowHeightMenu
+              anchorEl={rhBtnRef.current}
+              open={rhOpen}
+              onClose={() => setRhOpen(false)}
+              value={rowHeight}
+              options={heightOptions}
+              onChange={(h) => setRowHeight(h)}
+            />
+
+            <button className={topBtnClass()} title="Filter" aria-label="Filter">
               <IosShareOutlinedIcon fontSize="small" />
-              <span className="text-[13px]">Share and sync</span>
+              {!compact && <span className="text-[13px]">Share and sync</span>}
             </button>
 
             <div
               className="h-8 ml-1 flex items-center gap-2 rounded-sm px-2 hover:bg-gray-50 focus-within:ring-2 focus-within:ring-indigo-500 cursor-pointer"
               title="Search"
             >
-            <SearchRoundedIcon fontSize="small" className="text-gray-600" />
+              <SearchRoundedIcon fontSize="small" className="text-gray-600" />
             </div>
           </div>
         </div>
@@ -187,6 +246,7 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
           columnSizing={columnSizing}
           setColumnSizing={setColumnSizing}
           onAddRow={() => createRow.mutate({ tableId })}
+          rowHeight={rowHeight}
         />
       )}
 

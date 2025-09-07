@@ -303,5 +303,5 @@ export function useRowHeight(tableId: string) {
     setHeight.mutate({ tableId, rowHeight: clamped });
   };
 
-  return { rowHeight, setRowHeight, loading: !prefsQ.data && prefsQ.isLoading };
+  return { rowHeight, setRowHeight };
 }
