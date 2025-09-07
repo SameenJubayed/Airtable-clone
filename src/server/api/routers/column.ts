@@ -24,6 +24,7 @@ export const columnRouter = createTRPCRouter({
         tableId: z.string().cuid(),
         name: z.string().trim().min(1),
         type: z.nativeEnum(FieldType).default("TEXT"),
+        position: z.number().int().min(0).optional(), 
       }),
     )
     .mutation(async ({ input, ctx }) => {
@@ -33,17 +34,25 @@ export const columnRouter = createTRPCRouter({
         select: { id: true },
       });
 
-      // Compute append position (end of list)
-      const position = await ctx.db.column.count({ where: { tableId: table.id } });
+      return await ctx.db.$transaction(async (tx) => {
+        // Compute position
+        const count = await tx.column.count({ where: { tableId: table.id } });
+        const pos = Math.max(0, Math.min(input.position ?? count, count));
 
-      const result = await ctx.db.$transaction(async (tx) => {
+        if (pos < count) {
+          await tx.column.updateMany({
+            where: { tableId: table.id, position: { gte: pos } },
+            data: { position: { increment: 1 } },
+          });
+        }
+
         // create the column at the end
         const column = await tx.column.create({
           data: {
             tableId: table.id,
             name: input.name,
             type: input.type,
-            position, // append
+            position: pos, 
           },
           select: { id: true, name: true, type: true, position: true },
         });
@@ -72,8 +81,6 @@ export const columnRouter = createTRPCRouter({
 
         return column;
       });
-
-      return result;
     }),
 
   // Rename a column 
