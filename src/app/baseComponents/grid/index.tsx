@@ -12,6 +12,7 @@ import {
 import { useDynamicColumns, useRowNumberColumn } from "./columns";
 import TableView from "./tableView";
 import RowHeightMenu from "./RowHeightMenu";
+import FilterMenuPopover from "./FilterMenuPopover";
 import { isCuid } from "./isCuid";
 import { api } from "~/trpc/react";
 import { COL_W, ROW_H, ROW_H_MED, ROW_H_TALL, ROW_H_XT } from "./constants";
@@ -64,6 +65,10 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
       compact ? "w-8 px-0 justify-center" : "px-2 gap-1",
       extra,
     ].join(" ");
+
+  ////////////////////// FILTER MENU + STATE ///////////////////////////////////
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filterBtnRef = useRef<HTMLButtonElement | null>(null);
 
   ////////////////////// ROW HEIGHT + PERSISTENCE //////////////////////////////
   const { rowHeight, setRowHeight } = useRowHeight(tableId);
@@ -181,10 +186,25 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
               {!compact && <span className="text-[13px]">Hide fields</span>}
             </button>
 
-            <button className={topBtnClass()} title="Filter" aria-label="Filter">
+            <button
+              ref={filterBtnRef}
+              className={topBtnClass()}
+              title="Filter"
+              aria-label="Filter"
+              onClick={() => setFilterOpen((v) => !v)}
+              aria-haspopup="menu"
+              aria-expanded={filterOpen}
+            >
               <FilterListOutlinedIcon fontSize="small" />
               {!compact && <span className="text-[13px]">Filter</span>}
             </button>
+
+            <FilterMenuPopover
+              open={filterOpen}
+              onClose={() => setFilterOpen(false)}
+              anchorEl={filterBtnRef.current}
+              columns={(columnsQ.data ?? []).map(c => ({ id: c.id, name: c.name, type: c.type }))}
+            />
 
             <button className={topBtnClass()} title="Group" aria-label="Group">
               <DvrOutlinedIcon fontSize="small" />
