@@ -57,7 +57,7 @@ export default function FieldEditorPopover({
   anchorEl,
   anchorRect: rectProp,
   align = "auto",
-  gap = 8,
+  gap = 1,
   mode,
   initial,
   labels,
