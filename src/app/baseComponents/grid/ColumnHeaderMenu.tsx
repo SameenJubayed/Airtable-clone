@@ -119,7 +119,7 @@ export default function ColumnHeaderMenu({
     </button>
   );
 
-  const Divider = () => <div className="my-1 border-t border-gray-200" />;
+  const Divider = () => <div className="my-1 mx-3 border-t border-gray-200" />;
 
   return (
     <Portal>
@@ -127,9 +127,13 @@ export default function ColumnHeaderMenu({
         ref={panelRef}
         role="menu"
         style={{ position: "fixed", top: coords?.top, left: coords?.left }}
-        className="w-64 rounded-md border border-gray-200 bg-white shadow-lg z-[1000]"
+        className="w-80 p-3 rounded-md border border-gray-200 bg-white shadow-lg z-[1000]"
       >
-        <Item icon={<EditOutlinedIcon fontSize="small" />} label="Edit field" onClick={onEdit} />
+        <Item 
+          icon={<EditOutlinedIcon fontSize="small" />} 
+          label="Edit field" 
+          onClick={onEdit} 
+        />
         <Divider />
         <Item
           icon={<ContentCopyOutlinedIcon fontSize="small" />}
@@ -169,7 +173,7 @@ export default function ColumnHeaderMenu({
           onClick={onHide}
         />
         <Item
-          icon={<DeleteOutlineOutlinedIcon fontSize="small" />}
+          icon={<DeleteOutlineOutlinedIcon fontSize="small" className="text-gray-700"/>}
           label="Delete field"
           danger
           onClick={onDelete}

@@ -117,8 +117,3 @@ export default function RowHeightMenu({
     </Portal>
   );
 }
-
-// i now want to implement column header menus. colum headers when hovered should go grey and expandmoreicon appear right side of the cell. when opened (by either pressing the icon or right clicking the cell) it should give optioins to "Edit field", "Duplicate field", "Insert left", "Insert right", "Sort A -> Z", "Sort Z -> A" "Filter by this feild" "Hide field" "Delete field". 
-// Help me create this menu and implement editing field, insert left/right, and deleting field
-// "insert left", "insert right" should bring up the same field as the addfieldbutton, but the "edit field" should be the same thing but with slight differences, e.g. edit field button text instead of creative field   
-// the "insert left" popup should have its left border inline with the column left border, where as "insert right" should have its left border aligned with the columns right border. edit field should be the same as insert left
