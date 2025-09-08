@@ -32,7 +32,7 @@ export default function RowHeightMenu({
 
     // Right edge aligned with button’s right edge, below the button
     let left = r.right - pw;
-    let top = r.bottom + 8;
+    let top = r.bottom + 1;
 
     // Clamp to viewport
     left = Math.max(8, Math.min(left, window.innerWidth - pw - 8));
