@@ -44,8 +44,8 @@ export default function FieldPanel({
       initial={initial}
       labels={
         mode === "edit"
-          ? { titleEdit: "Edit field", btnSave: "Save" }
-          : { titleCreate: "Create field", btnCreate: "Create field" }
+          ? { btnSave: "Save" }
+          : { btnCreate: "Create field" }
       }
       onCreate={onCreate}
     />

@@ -36,7 +36,7 @@ export default function AddFieldButton({ tableId }: Props) {
         anchorEl={btnRef.current}
         align="auto" // same smart behavior you had before
         mode="create"
-        labels={{ titleCreate: "Create field", btnCreate: "Create field" }}
+        labels={{ btnCreate: "Create field" }}
         onCreate={({ name, type, position }) => {
           addColumn.mutate({ tableId, name, type, position });
         }}

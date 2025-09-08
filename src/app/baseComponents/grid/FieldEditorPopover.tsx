@@ -40,10 +40,8 @@ export type FieldEditorPopoverProps = {
     position?: number; // used for create (insert at index)
   };
 
-  /** Optional labels override (so “Edit field” vs “Create field”) */
+  /** labels for the button */
   labels?: Partial<{
-    titleCreate: string;
-    titleEdit: string;
     btnCreate: string;
     btnSave: string;
   }>;
@@ -230,8 +228,6 @@ export default function FieldEditorPopover({
   if (!open) return null;
 
   const T = {
-    titleCreate: labels?.titleCreate ?? "Create field",
-    titleEdit: labels?.titleEdit ?? "Edit field",
     btnCreate: labels?.btnCreate ?? "Create field",
     btnSave: labels?.btnSave ?? "Save",
   };

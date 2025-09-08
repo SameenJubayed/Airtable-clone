@@ -74,16 +74,16 @@ function HeaderWithMenu({tableId, col, position}: {
           setMenuOpen(true);
         }}
         className={[
-          "flex items-center justify-between gap-2 overflow-hidden rounded-[2px]",
+          "flex items-center justify-between overflow-hidden",
           hover ? "bg-gray-100" : "",
         ].join(" ")}
       >
-        <span className="font-bold truncate">{col.name}</span>
+        <span className="font-bold truncate pl-2">{col.name}</span>
         <button
           type="button"
           onClick={() => setMenuOpen((v) => !v)}
           className={[
-            "shrink-0 inline-flex items-center justify-center h-6 w-6 rounded",
+            "shrink-0 inline-flex items-center justify-center h-8 rounded",
             hover ? "opacity-100" : "opacity-0",
             "transition-opacity cursor-pointer",
           ].join(" ")}

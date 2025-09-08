@@ -19,7 +19,6 @@ type Props = {
   onClose: () => void;
   anchorRect: DOMRect | null; // header cell rect
   // column: { id: string; name: string; type: "TEXT" | "NUMBER"; position: number };
-  // actions you’ll supply from the header component
   onEdit: () => void;
   onInsertLeft: () => void;
   onInsertRight: () => void;
