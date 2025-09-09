@@ -1,7 +1,14 @@
 // app/baseComponents/grid/tableView.tsx
 "use client";
 
-import { useMemo, useCallback, type Dispatch, type SetStateAction } from "react";
+import { 
+  useMemo, 
+  useCallback,
+  useState,
+  useEffect, 
+  type Dispatch, 
+  type SetStateAction 
+} from "react";
 import { 
   flexRender, 
   getCoreRowModel, 
@@ -11,8 +18,22 @@ import {
 } from "@tanstack/react-table";
 import type { CellRecord, ColMeta } from "./types";
 import { ROW_H, ADD_FIELD_W, MIN_COL_W } from "./constants";
-import AddIcon from "@mui/icons-material/Add";
 import AddFieldButton from "./AddFieldButton";
+import Portal from "./Portal";
+import {
+  useOptimisticInsertRow,
+  useOptimisticDeleteRow,
+} from "./hooks";
+import {
+  useFloatingForAnchor,
+  useCloseOnOutside,
+  MenuItem,
+} from "./uiPopover";
+// UI
+import AddIcon from "@mui/icons-material/Add";
+import ArrowUpwardOutlinedIcon from '@mui/icons-material/ArrowUpwardOutlined';
+import ArrowDownwardOutlinedIcon from '@mui/icons-material/ArrowDownwardOutlined';
+import DeleteOutlineOutlinedIcon from "@mui/icons-material/DeleteOutlineOutlined";
 
 type Props = {
   tableId: string;  
@@ -20,9 +41,86 @@ type Props = {
   columns: ColumnDef<CellRecord, unknown>[];
   columnSizing: ColumnSizingState;
   setColumnSizing: Dispatch<SetStateAction<ColumnSizingState>>;
-  onAddRow: () => void;
   rowHeight: number; 
 };
+
+// row context menu (insert above/below, delete)
+function RowMenu({
+  open,
+  anchorEl,
+  onClose,
+  onInsertAbove,
+  onInsertBelow,
+  onDelete,
+}: {
+  open: boolean;
+  anchorEl: HTMLElement | null;
+  onClose: () => void;
+  onInsertAbove: () => void;
+  onInsertBelow: () => void;
+  onDelete: () => void; 
+}) {
+  const { x, y, strategy, refs } = useFloatingForAnchor(
+    anchorEl,
+    open,
+    "right-start",
+  );
+
+  // close on ESC / outside
+  const panelRef = { current: null as HTMLDivElement | null };
+  useCloseOnOutside(open, onClose, panelRef as any, anchorEl ?? undefined);
+
+  if (!open || !anchorEl) return null;
+
+  return (
+    <Portal>
+      <div
+        ref={(node) => {
+          (panelRef as any).current = node;
+          refs.setFloating(node);
+        }}
+        data-menulayer="true"
+        role="menu"
+        className="rounded-md border border-gray-200 bg-white shadow-lg z-[2000] py-1"
+        style={{ position: strategy, top: y ?? 0, left: x ?? 0, width: 200 }}
+      >
+        <MenuItem
+          onClick={() => {
+            onInsertAbove();
+            onClose();
+          }}
+          className="flex items-center"
+        >
+          <ArrowUpwardOutlinedIcon fontSize="small" className="text-gray-500 mr-2" />
+          Insert row above
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            onInsertBelow();
+            onClose();
+          }}
+          className="flex items-center"
+        >
+          <ArrowDownwardOutlinedIcon fontSize="small" className="text-gray-500 mr-2" />
+          Insert row below
+        </MenuItem>
+
+        <div className="my-1 mx-2 border-t border-gray-200" />
+
+        <MenuItem
+          onClick={() => {
+            onDelete();
+            onClose();
+          }}
+          className="flex items-center text-red-500"
+        >
+          <DeleteOutlineOutlinedIcon fontSize="small" className="text-gray-500 mr-2" />
+          Delete row
+        </MenuItem>
+      </div>
+    </Portal>
+  );
+}
 
 export default function TableView({ 
   tableId,
@@ -30,15 +128,24 @@ export default function TableView({
   columns, 
   columnSizing, 
   setColumnSizing,
-  onAddRow,
   rowHeight
 }: Props) {  
-  // wrapper so tanstack can pass either a value or an updater without recreating a new function each render
+  const { insertAtEnd, insertAbove, insertBelow } = useOptimisticInsertRow(tableId);
+  const { deleteByIndex } = useOptimisticDeleteRow(tableId);
+
+  // right-click menu state
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const [menuRowIndex, setMenuRowIndex] = useState<number | null>(null);
+
+  // column resizing control innit brev cmon now 
   const handleColumnSizingChange = useCallback(
     (updater: SetStateAction<ColumnSizingState>) => {
       setColumnSizing((prev) => {
         const next =
-          typeof updater === "function" ? (updater as (s: ColumnSizingState) => ColumnSizingState)(prev) : updater;
+          typeof updater === "function" 
+            ? (updater as (s: ColumnSizingState) => ColumnSizingState)(prev) 
+            : updater;
         const clamped: ColumnSizingState = {};
         for (const [colId, w] of Object.entries(next)) {
           // TanStack stores widths as numbers; ensure number + clamp
@@ -114,7 +221,9 @@ export default function TableView({
                     ].join(" ")}
                     style={{ height: ROW_H }}
                   >
-                    {h.isPlaceholder ? null : flexRender(h.column.columnDef.header, h.getContext())}
+                    {h.isPlaceholder 
+                      ? null 
+                      : flexRender(h.column.columnDef.header, h.getContext())}
                     {/* Resizer handle */}
                     {h.column.getCanResize() && (
                       <div
@@ -143,11 +252,12 @@ export default function TableView({
         </thead>
 
         <tbody>
-          {table.getRowModel().rows.map((r) => (
+          {table.getRowModel().rows.map((r, rowIdx) => (
             <tr key={r.id} className="bg-white hover:bg-gray-50">
               {r.getVisibleCells().map((c, colIdx) => {
                 const tdExtra =
                   ((c.column.columnDef as { meta?: ColMeta }).meta?.tdClassName) ?? "";
+                const isRowNumberCell = colIdx === 0;
                 return (
                   <td 
                     key={c.id} 
@@ -158,6 +268,17 @@ export default function TableView({
                       tdExtra
                     ].join(" ")}
                     style={{ height: rowHeight }}
+                    onContextMenu={
+                      isRowNumberCell
+                        ? (e) => {
+                            e.preventDefault();
+                            setMenuAnchor(e.currentTarget as HTMLElement);
+                            setMenuRowIndex(rowIdx);
+                            setMenuOpen(true);
+                          }
+                        : undefined
+                    }
+                    title={isRowNumberCell ? "Right-click for row menu" : undefined}
                   >
                     {flexRender(c.column.columnDef.cell, c.getContext())}
                   </td>
@@ -169,7 +290,7 @@ export default function TableView({
           {/* + (add row) footer row */}
           <tr
             className="bg-white hover:bg-gray-100 cursor-pointer select-none"
-            onClick={() => onAddRow()}
+            onClick={() => insertAtEnd()}
           >
             <td
               colSpan={leafCols.length}
@@ -203,6 +324,25 @@ export default function TableView({
           )}
         </tbody>
       </table>
+
+      {/* Floating UI row menu (aligned to left/top of the row-number cell) */}
+      <RowMenu
+        open={menuOpen}
+        anchorEl={menuAnchor}
+        onClose={() => setMenuOpen(false)}
+        onInsertAbove={() => {
+          if (menuRowIndex == null) return;
+          insertAbove(menuRowIndex);
+        }}
+        onInsertBelow={() => {
+          if (menuRowIndex == null) return;
+          insertBelow(menuRowIndex);
+        }}
+        onDelete={() => {
+          if (menuRowIndex == null) return;
+          deleteByIndex(menuRowIndex);
+        }}
+      />
     </div>
   );
 }

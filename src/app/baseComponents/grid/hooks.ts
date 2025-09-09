@@ -47,52 +47,62 @@ export function useEditingKey() {
   return { editingKey, setEditingKey };
 }
 
-export function useOptimisticInsertRow(
-    tableId: string, 
-    columnsQ: ReturnType<typeof api.column.listByTable.useQuery>, 
-    rowsQ: ReturnType<typeof api.row.list.useQuery>
-) {
+export function useOptimisticInsertRow(tableId: string) {
   const utils = api.useUtils();
   const key = { tableId, skip: 0, take: 200 } as const;
 
-  const insertRow = api.row.insertAt.useMutation({
-    onMutate: async () => {
-      // Cancel any ongoing fetches
-      await utils.row.list.cancel(key);
-      // snapshot for rollback
-      const previous = utils.row.list.getData(key);
+  const enabled = isCuid(tableId);
+  const columnsQ = api.column.listByTable.useQuery({ tableId }, { enabled });
+  const rowsQ = api.row.list.useQuery(key, { enabled });
 
-      // build an optimistic row id & position + find columns to write empty cells for
+  const getEndPosition = () => {
+    const rows = utils.row.list.getData(key)?.rows ?? [];
+    if (rows.length === 0) return 0;
+    let maxPos = -1;
+    for (const r of rows) if (r.position > maxPos) maxPos = r.position;
+    return maxPos + 1;
+  };
+
+  const insertRow = api.row.insertAt.useMutation({
+    onMutate: async (vars) => {
+      await utils.row.list.cancel(key);
+
+      const previous = utils.row.list.getData(key);
+      const cols = (columnsQ.data ?? []) as ColumnLite[];
       const tempRowId = `optimistic-${Date.now()}`;
-      const position = (previous?.rows?.length ?? 0);
-      const cols: ColumnLite[] = (columnsQ.data ?? []) as ColumnLite[];
       const now = new Date();
 
-      // writing optimistic cache
       utils.row.list.setData(key, (old) => {
-        const base: RowList =
-          old ?? { rows: [], cells: [] as RowList["cells"] };
+        const base: RowList = old ?? { rows: [], cells: [] as RowList["cells"] };
 
-        // clamp position
-        const pos = Math.max(0, Math.min(position ?? base.rows.length, base.rows.length));
+        // compute end from max(position), not rows.length
+        let end = 0;
+        for (const r of base.rows) if (r.position >= end) end = r.position + 1;
 
-        // bump positions >= pos
-        const bumped = base.rows.map((r) =>
-          r.position >= pos ? { ...r, position: r.position + 1 } : r
+        // clamp requested position against [0, end]
+        const requested = vars.position ?? end;
+        const desired = Math.max(0, Math.min(requested, end));
+
+        // ensure we operate on a position-sorted view
+        const sorted = [...base.rows].sort((a, b) => a.position - b.position);
+
+        // bump positions >= desired
+        const bumped = sorted.map((r) =>
+          r.position >= desired ? { ...r, position: r.position + 1 } : r
         );
 
-        // insert temp row at pos
+        // insert temp row at desired pos
         const newRow = {
           id: tempRowId,
           tableId,
-          position: pos,
+          position: desired,
           createdAt: now,
           updatedAt: now,
         };
 
         const rows = [...bumped, newRow].sort((a, b) => a.position - b.position);
 
-        // add empty cells for all columns
+        // add empty cells for all columns for the new temp row
         const addCells = cols.map((c) => ({
           rowId: tempRowId,
           columnId: c.id,
@@ -108,7 +118,6 @@ export function useOptimisticInsertRow(
         } as RowList;
       });
 
-      // pass context to onError/onSuccess
       return { previous, tempRowId };
     },
     // If server fails, roll back cache
@@ -137,8 +146,7 @@ export function useOptimisticInsertRow(
   });
 
   const insertAtEnd = () => {
-    const len = utils.row.list.getData(key)?.rows?.length ?? 0;
-    insertRow.mutate({ tableId, position: len });
+    insertRow.mutate({ tableId, position: getEndPosition() });
   };
 
   const insertAbove = (rowIndex: number) => {
@@ -154,6 +162,47 @@ export function useOptimisticInsertRow(
   };
 
   return { insertRow, insertAtEnd, insertAbove, insertBelow };
+}
+
+export function useOptimisticDeleteRow(tableId: string) {
+  const utils = api.useUtils();
+  const listKey = { tableId, skip: 0, take: 200 } as const;
+  const rowsQ = api.row.list.useQuery(listKey);
+
+  const del = api.row.delete.useMutation({
+    onMutate: async ({ rowId }: { rowId: string }) => {
+      await utils.row.list.cancel(listKey);
+      const previous = utils.row.list.getData(listKey);
+
+      utils.row.list.setData(listKey, (old) => {
+        if (!old) return old as any;
+        const removed = old.rows.find((r) => r.id === rowId);
+        const afterPos = removed?.position ?? Number.MAX_SAFE_INTEGER;
+        return {
+          rows: old.rows
+            .filter((r) => r.id !== rowId)
+            .map((r) => (r.position > afterPos ? { ...r, position: r.position - 1 } : r)),
+          cells: old.cells.filter((c) => c.rowId !== rowId),
+        } as RowList;
+      });
+
+      return { previous };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.previous) utils.row.list.setData(listKey, ctx.previous);
+    },
+    onSettled: () => { void rowsQ.refetch(); },
+  });
+
+  const deleteById = (rowId: string) => del.mutate({ rowId });
+
+  const deleteByIndex = (rowIndex: number) => {
+    const list = utils.row.list.getData(listKey);
+    const rowId = list?.rows?.[rowIndex]?.id;
+    if (rowId) del.mutate({ rowId });
+  };
+
+  return { deleteById, deleteByIndex };
 }
 
 export function useOptimisticUpdateCell( 

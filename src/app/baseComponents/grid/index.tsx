@@ -40,7 +40,7 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
   const utils = api.useUtils();
 
   const updateCell = useOptimisticUpdateCell(tableId, rowsQ);
-  const { insertAtEnd } = useOptimisticInsertRow(tableId, columnsQ, rowsQ);
+  const { insertAtEnd } = useOptimisticInsertRow(tableId);
 
   const rowNumCol = useRowNumberColumn();
   const dynamicCols = useDynamicColumns({
@@ -292,7 +292,6 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
           columns={columns}
           columnSizing={columnSizing}
           setColumnSizing={setColumnSizing}
-          onAddRow={insertAtEnd}
           rowHeight={rowHeight}
         />
       )}
