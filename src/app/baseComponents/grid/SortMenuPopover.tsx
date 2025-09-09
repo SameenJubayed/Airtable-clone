@@ -119,7 +119,7 @@ export default function SortMenuPopover({
               ))}
             </div>
           ) : (
-            <div className="pt-3">
+            <div className="pt-1">
               <div className="flex flex-col gap-2">
                 {rows.map((r) => {
                   const col = fieldById(r.fieldId)!;

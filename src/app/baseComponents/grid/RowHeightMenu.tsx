@@ -83,11 +83,11 @@ export default function RowHeightMenu({
         style={{ position: "fixed", top: coords?.top, left: coords?.left }}
         className="
           z-50 w-[125px] rounded-md border border-gray-200 bg-white shadow-lg
-          py-2
+          pt-2
         "
       >
         <div className="px-2 text-[11px] text-gray-500 text-center">Select a row height</div>
-        <ul className="py-1">
+        <ul className="pt-1">
           {options.map((opt) => {
             const selected = opt.value === value;
             return (
@@ -101,8 +101,8 @@ export default function RowHeightMenu({
                     onClose();
                   }}
                   className={[
-                    "w-full px-3 py-2 text-left text-sm flex items-center gap-2",
-                    selected ? "text-indigo-400 font-medium" : "text-gray-700 hover:bg-gray-50",
+                    "w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-gray-100 cursor-pointer",
+                    selected ? "text-indigo-400 font-medium" : "text-gray-700",
                   ].join(" ")}
                 >
                   {/* simple leading icon, same for all—keeps the look consistent */}
