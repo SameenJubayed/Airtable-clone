@@ -5,7 +5,7 @@ import {
   useGridData,
   useColumnSizingState, 
   useEditingKey, 
-  useOptimisticCreateRow, 
+  useOptimisticInsertRow, 
   useOptimisticUpdateCell, 
   useRowHeight 
 } from "./hooks";
@@ -40,7 +40,7 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
   const utils = api.useUtils();
 
   const updateCell = useOptimisticUpdateCell(tableId, rowsQ);
-  const createRow = useOptimisticCreateRow(tableId, columnsQ, rowsQ);
+  const { insertAtEnd } = useOptimisticInsertRow(tableId, columnsQ, rowsQ);
 
   const rowNumCol = useRowNumberColumn();
   const dynamicCols = useDynamicColumns({
@@ -292,7 +292,7 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
           columns={columns}
           columnSizing={columnSizing}
           setColumnSizing={setColumnSizing}
-          onAddRow={() => createRow.mutate({ tableId })}
+          onAddRow={insertAtEnd}
           rowHeight={rowHeight}
         />
       )}

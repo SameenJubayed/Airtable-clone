@@ -40,12 +40,16 @@ export const rowRouter = createTRPCRouter({
       return { rows, cells };
     }),
 
-    /**
-   * Create a single row, appended to the end,
-   * and initialize cells (null values) for all existing columns.
+  /**
+   * Insert a row at an exact position (0-based).
+   * Bumps positions >= position by +1, then creates a new row at that position.
+   * Initializes cells for all columns as null.
    */
-  create: protectedProcedure
-    .input(z.object({tableId: z.string().cuid(),}),)
+  insertAt: protectedProcedure
+    .input(z.object({
+      tableId: z.string().cuid(),
+      position: z.number().int().min(0)
+    }))
     .mutation(async ({ input, ctx }) => {
       // ensure user owns table via base
       await ctx.db.table.findFirstOrThrow({
@@ -53,24 +57,26 @@ export const rowRouter = createTRPCRouter({
         select: { id: true },
       });
 
-      // new row position = current count (append)
-      const position = await ctx.db.row.count({ where: { tableId: input.tableId } });
+      await ctx.db.row.updateMany({
+        where: { tableId: input.tableId, position: { gte: input.position } },
+        data: { position: { increment: 1 } },
+      });
 
       const row = await ctx.db.row.create({
-        data: { tableId: input.tableId, position },
+        data: { tableId: input.tableId, position: input.position },
         select: { id: true, position: true, createdAt: true },
       });
 
       // initialize cells for existing columns
-      const cols = await ctx.db.column.findMany({
+      const columns = await ctx.db.column.findMany({
         where: { tableId: input.tableId },
         select: { id: true },
         orderBy: { position: "asc" },
       });
 
-      if (cols.length) {
+      if (columns.length) {
         await ctx.db.cell.createMany({
-          data: cols.map((c) => ({
+          data: columns.map((c) => ({
             rowId: row.id,
             columnId: c.id,
             textValue: null,

@@ -47,7 +47,7 @@ export function useEditingKey() {
   return { editingKey, setEditingKey };
 }
 
-export function useOptimisticCreateRow(
+export function useOptimisticInsertRow(
     tableId: string, 
     columnsQ: ReturnType<typeof api.column.listByTable.useQuery>, 
     rowsQ: ReturnType<typeof api.row.list.useQuery>
@@ -55,7 +55,7 @@ export function useOptimisticCreateRow(
   const utils = api.useUtils();
   const key = { tableId, skip: 0, take: 200 } as const;
 
-  const createRow = api.row.create.useMutation({
+  const insertRow = api.row.insertAt.useMutation({
     onMutate: async () => {
       // Cancel any ongoing fetches
       await utils.row.list.cancel(key);
@@ -66,41 +66,48 @@ export function useOptimisticCreateRow(
       const tempRowId = `optimistic-${Date.now()}`;
       const position = (previous?.rows?.length ?? 0);
       const cols: ColumnLite[] = (columnsQ.data ?? []) as ColumnLite[];
+      const now = new Date();
 
       // writing optimistic cache
-      utils.row.list.setData(key, (old: RowList | undefined)  => {
-        const now = new Date();
-        if (!old) {
-          return {
-            rows: [{ id: tempRowId, tableId, position, createdAt: now, updatedAt: now }],
-            cells: cols.map((c) => ({
-              rowId: tempRowId,
-              columnId: c.id,
-              textValue: null,
-              numberValue: null,
-              createdAt: now,
-              updatedAt: now,
-            })),
-          };
-        }
+      utils.row.list.setData(key, (old) => {
+        const base: RowList =
+          old ?? { rows: [], cells: [] as RowList["cells"] };
+
+        // clamp position
+        const pos = Math.max(0, Math.min(position ?? base.rows.length, base.rows.length));
+
+        // bump positions >= pos
+        const bumped = base.rows.map((r) =>
+          r.position >= pos ? { ...r, position: r.position + 1 } : r
+        );
+
+        // insert temp row at pos
+        const newRow = {
+          id: tempRowId,
+          tableId,
+          position: pos,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        const rows = [...bumped, newRow].sort((a, b) => a.position - b.position);
+
+        // add empty cells for all columns
+        const addCells = cols.map((c) => ({
+          rowId: tempRowId,
+          columnId: c.id,
+          textValue: null,
+          numberValue: null,
+          createdAt: now,
+          updatedAt: now,
+        }));
+
         return {
-          rows: [
-            ...old.rows,
-            { id: tempRowId, tableId, position, createdAt: now, updatedAt: now },
-          ],
-          cells: [
-            ...old.cells,
-            ...cols.map((c) => ({
-              rowId: tempRowId,
-              columnId: c.id,
-              textValue: null,
-              numberValue: null,
-              createdAt: now,
-              updatedAt: now,
-            })),
-          ],
-        } as typeof old;
+          rows,
+          cells: [...base.cells, ...addCells],
+        } as RowList;
       });
+
       // pass context to onError/onSuccess
       return { previous, tempRowId };
     },
@@ -126,10 +133,27 @@ export function useOptimisticCreateRow(
         } as typeof old;
       });
     },
-    onSettled: () => { void rowsQ.refetch(); },
+    onSettled: () => void rowsQ.refetch()
   });
 
-  return createRow;
+  const insertAtEnd = () => {
+    const len = utils.row.list.getData(key)?.rows?.length ?? 0;
+    insertRow.mutate({ tableId, position: len });
+  };
+
+  const insertAbove = (rowIndex: number) => {
+    const list = utils.row.list.getData(key);
+    const pos = list?.rows?.[rowIndex]?.position ?? rowIndex;
+    insertRow.mutate({ tableId, position: pos });
+  };
+
+  const insertBelow = (rowIndex: number) => {
+    const list = utils.row.list.getData(key);
+    const pos = (list?.rows?.[rowIndex]?.position ?? rowIndex) + 1;
+    insertRow.mutate({ tableId, position: pos });
+  };
+
+  return { insertRow, insertAtEnd, insertAbove, insertBelow };
 }
 
 export function useOptimisticUpdateCell( 
