@@ -9,7 +9,7 @@ import type { CellRecord, ColMeta } from "./types";
 import { ROW_H, ADD_FIELD_W, MIN_COL_W } from "./constants";
 import AddFieldButton from "./AddFieldButton";
 import Portal from "./Portal";
-import { useOptimisticInsertRow, useOptimisticDeleteRow } from "./hooks";
+import { useOptimisticInsertRow, useOptimisticDeleteRow, useRowHeight } from "./hooks";
 import { useFloatingForAnchor, useCloseOnOutside, MenuItem } from "./uiPopover";
 // UI
 import AddIcon from "@mui/icons-material/Add";
@@ -23,7 +23,6 @@ type Props = {
   columns: ColumnDef<CellRecord, unknown>[];
   columnSizing: ColumnSizingState;
   setColumnSizing: Dispatch<SetStateAction<ColumnSizingState>>;
-  rowHeight: number; 
 };
 
 // row context menu (insert above/below, delete)
@@ -109,8 +108,7 @@ export default function TableView({
   data, 
   columns, 
   columnSizing, 
-  setColumnSizing,
-  rowHeight
+  setColumnSizing
 }: Props) {  
   const { insertAtEnd, insertAbove, insertBelow } = useOptimisticInsertRow(tableId);
   const { deleteByIndex } = useOptimisticDeleteRow(tableId);
@@ -119,6 +117,7 @@ export default function TableView({
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [menuRowIndex, setMenuRowIndex] = useState<number | null>(null);
+  const { rowHeight, setRowHeight } = useRowHeight(tableId);
 
   // column resizing control innit brev cmon now 
   const handleColumnSizingChange = useCallback(
