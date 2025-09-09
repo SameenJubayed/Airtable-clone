@@ -113,6 +113,25 @@ export const tableRouter = createTRPCRouter({
       });
     }),
 
+  delete: protectedProcedure
+    .input(z.object({ tableId: z.string().cuid() }))
+    .mutation(async ({ input, ctx }) => {
+      // Ensure ownership: only allow deleting if user owns the base
+      const table = await ctx.db.table.findFirstOrThrow({
+        where: { 
+          id: input.tableId, 
+          base: { createdById: ctx.session.user.id }
+        },
+        select: { id: true },
+      });
+
+      await ctx.db.table.delete({
+        where: { id: table.id },
+      });
+
+      return { success: true };
+    }),
+
   // Get UI prefs (row height for now ay)
   getUiPrefs: protectedProcedure
     .input(z.object({ tableId: z.string().cuid() }))
