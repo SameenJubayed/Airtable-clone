@@ -175,7 +175,7 @@ export function useOptimisticDeleteRow(tableId: string) {
       const previous = utils.row.list.getData(listKey);
 
       utils.row.list.setData(listKey, (old) => {
-        if (!old) return old as any;
+        if (!old) return old;
         const removed = old.rows.find((r) => r.id === rowId);
         const afterPos = removed?.position ?? Number.MAX_SAFE_INTEGER;
         return {

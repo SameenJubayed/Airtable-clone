@@ -1,34 +1,16 @@
 // app/baseComponents/grid/tableView.tsx
 "use client";
 
-import { 
-  useMemo, 
-  useCallback,
-  useState,
-  useEffect, 
-  type Dispatch, 
-  type SetStateAction 
-} from "react";
-import { 
-  flexRender, 
-  getCoreRowModel, 
-  useReactTable, 
-  type ColumnDef, 
-  type ColumnSizingState,
-} from "@tanstack/react-table";
+import { useMemo, useCallback, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
+import { flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
+import type { ColumnDef, ColumnSizingState } from "@tanstack/react-table";
 import type { CellRecord, ColMeta } from "./types";
 import { ROW_H, ADD_FIELD_W, MIN_COL_W } from "./constants";
 import AddFieldButton from "./AddFieldButton";
 import Portal from "./Portal";
-import {
-  useOptimisticInsertRow,
-  useOptimisticDeleteRow,
-} from "./hooks";
-import {
-  useFloatingForAnchor,
-  useCloseOnOutside,
-  MenuItem,
-} from "./uiPopover";
+import { useOptimisticInsertRow, useOptimisticDeleteRow } from "./hooks";
+import { useFloatingForAnchor, useCloseOnOutside, MenuItem } from "./uiPopover";
 // UI
 import AddIcon from "@mui/icons-material/Add";
 import ArrowUpwardOutlinedIcon from '@mui/icons-material/ArrowUpwardOutlined';
@@ -68,7 +50,7 @@ function RowMenu({
 
   // close on ESC / outside
   const panelRef = { current: null as HTMLDivElement | null };
-  useCloseOnOutside(open, onClose, panelRef as any, anchorEl ?? undefined);
+  useCloseOnOutside(open, onClose, panelRef, anchorEl ?? undefined);
 
   if (!open || !anchorEl) return null;
 
@@ -76,13 +58,13 @@ function RowMenu({
     <Portal>
       <div
         ref={(node) => {
-          (panelRef as any).current = node;
+          panelRef.current = node;
           refs.setFloating(node);
         }}
         data-menulayer="true"
         role="menu"
         className="rounded-md border border-gray-200 bg-white shadow-lg z-[2000] py-1"
-        style={{ position: strategy, top: y ?? 0, left: x ?? 0, width: 200 }}
+        style={{ position: strategy, top: y , left: x , width: 200 }}
       >
         <MenuItem
           onClick={() => {
