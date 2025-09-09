@@ -41,7 +41,7 @@ export default function BaseHeader({
 
   return (
     <header className="fixed inset-x-0 top-0 z-20 h-14 border-b border-gray-200 bg-white pl-14">
-      <div className="mx-auto flex h-full max-w-6xl items-center gap-3 px-4">
+      <div className="flex h-full max-w-6xl items-center gap-3 px-4">
         {!editing ? (
           <h1
             className="cursor-text text-xl font-semibold text-gray-900"

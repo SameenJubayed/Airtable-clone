@@ -190,7 +190,7 @@ export default function TableTabs({
                     "text-[13px] leading-none select-none transition-colors",
                     isActive
                       ? "bg-white text-gray-900 font-medium"
-                      : "bg-gray-100 text-gray-500 hover:bg-gray-300 hover:font-medium cursor-pointer",
+                      : "bg-gray-100 text-gray-500 hover:bg-gray-300 cursor-pointer",
                     "rounded-t-sm first:rounded-l-none border-0",
                   ].join(" ")}
                   title={t.name}
