@@ -115,7 +115,7 @@ export default function TableTabs({
       const previous = utils.table.listByBase.getData({ baseId }) ?? [];
 
       const tempId = `optimistic-${Date.now()}`;
-      const name = (vars.name && vars.name.trim()) || nextUniqueTableName();
+      const name = vars.name?.trim() ?? nextUniqueTableName();
 
       utils.table.listByBase.setData({ baseId }, (old) => {
         const arr = old ?? previous;
@@ -218,7 +218,7 @@ export default function TableTabs({
                     <MenuItem
                       onClick={() => {
                         const newName = prompt("Enter new table name:", t.name);
-                        if (newName && newName.trim()) {
+                        if (newName) {
                           rename.mutate({ tableId: t.id, name: newName.trim() });
                         }
                         setOpenMenuId(null);
