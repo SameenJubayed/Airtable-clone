@@ -4,15 +4,12 @@ import { useEffect, useState, useRef } from "react";
 import {
   useGridData,
   useColumnSizingState, 
-  useEditingKey, 
-  useOptimisticUpdateCell, 
   useRowHeight 
 } from "./hooks";
-import { useDynamicColumns, useRowNumberColumn } from "./columns";
 import FilterMenuPopover from "./FilterMenuPopover";
 import SortMenuPopover from "./SortMenuPopover";
 import RowHeightMenu from "./RowHeightMenu";
-import { isCuid } from "./isCuid";
+
 import { api } from "~/trpc/react";
 import { COL_W, ROW_H, ROW_H_MED, ROW_H_TALL, ROW_H_XT } from "./constants";
 
@@ -31,22 +28,11 @@ import FormatLineSpacingIcon from '@mui/icons-material/FormatLineSpacing';
 import AddIcon from "@mui/icons-material/Add";
 
 export default function BaseGrid({ tableId }: { tableId: string }) {
-  const { columnsQ, rowsQ, data } = useGridData(tableId);
+  const { columnsQ } = useGridData(tableId);
   const { columnSizing, setColumnSizing } = useColumnSizingState();
 
-  const { editingKey, setEditingKey } = useEditingKey();
   const utils = api.useUtils();
 
-  const updateCell = useOptimisticUpdateCell(tableId, rowsQ);
-
-  const rowNumCol = useRowNumberColumn();
-  const dynamicCols = useDynamicColumns({
-    columnsData: columnsQ.data?.map((c) => ({ id: c.id, name: c.name, type: c.type, width: c.width })),
-    editingKey,
-    setEditingKey,
-    updateCell,
-    tableId,
-  });
   ////////////////////// RESPONSIVE TOOLBAR SIZE ///////////////////////////////
   const [compact, setCompact] = useState(false);
   useEffect(() => {

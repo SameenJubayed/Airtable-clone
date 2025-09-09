@@ -117,7 +117,7 @@ export default function TableView({
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [menuRowIndex, setMenuRowIndex] = useState<number | null>(null);
-  const { rowHeight, setRowHeight } = useRowHeight(tableId);
+  const { rowHeight } = useRowHeight(tableId);
 
   // column resizing control innit brev cmon now 
   const handleColumnSizingChange = useCallback(
