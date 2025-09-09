@@ -140,15 +140,17 @@ export function Menu({
 export function MenuItem({
   onClick,
   children,
+  className = "",
 }: {
   onClick: () => void;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="w-full text-left text-sm px-3 py-2 hover:bg-gray-100"
+      className={`w-full text-left text-sm px-3 py-2 hover:bg-gray-100 ${className}`}
     >
       {children}
     </button>
