@@ -1,9 +1,21 @@
 // app/baseComponents/grid/FieldEditorPopover.tsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Portal from "./Portal";
 import { api } from "~/trpc/react";
+
+// Floating UI
+import {
+  useFloating,
+  offset,
+  flip,
+  autoUpdate,
+  type VirtualElement,
+} from "@floating-ui/react";
+
+// Optional helper to close on ESC / outside (same pattern you use elsewhere)
+import { useCloseOnOutside } from "./uiPopover";
 
 type FieldType = "TEXT" | "NUMBER";
 type Mode = "create" | "edit";
@@ -11,7 +23,6 @@ type Mode = "create" | "edit";
 export type FieldEditorPopoverProps = {
   tableId: string;
 
-  /** Control */
   open: boolean;
   onClose: () => void;
 
@@ -22,31 +33,28 @@ export type FieldEditorPopoverProps = {
   /**
    * Horizontal alignment preference for the panel relative to the anchor:
    * - "leftEdge": panelLeft = anchor.left
-   * - "rightEdge": panelRight = ancho.right
-   * - "leftAtRightEdge": paneLLeft = anchor.right 
-   * - "auto": try leftEdge → centered → rightEdge (fits viewport)
+   * - "rightEdge": panelRight = anchor.right
+   * - "leftAtRightEdge": panelLeft = anchor.right
+   * - "auto": bottom-start with flip/shift (good default)
    */
   align?: "leftEdge" | "rightEdge" | "leftAtRightEdge" | "auto";
 
   /** Vertical gap below the anchor (default 8) */
   gap?: number;
 
-  /** Mode & initial data (for edit or insert-at-position) */
   mode: Mode;
   initial?: {
     columnId?: string;
     name?: string;
     type?: FieldType;
-    position?: number; // used for create (insert at index)
+    position?: number;
   };
 
-  /** labels for the button */
   labels?: Partial<{
     btnCreate: string;
     btnSave: string;
   }>;
 
-  /** Optional callback on create */
   onCreate?: (vars: { name: string; type: FieldType; position?: number }) => void;
 };
 
@@ -61,7 +69,7 @@ export default function FieldEditorPopover({
   mode,
   initial,
   labels,
-  onCreate
+  onCreate,
 }: FieldEditorPopoverProps) {
   const utils = api.useUtils();
 
@@ -71,158 +79,104 @@ export default function FieldEditorPopover({
   useEffect(() => {
     if (!open) return;
     setName(initial?.name ?? "");
-    const nextType: FieldType = initial?.type ?? "TEXT";
-    setType(nextType);
+    setType((initial?.type) ?? "TEXT");
   }, [open, initial?.name, initial?.type]);
 
   // --- server mutations
   const rename = api.column.rename.useMutation();
   const changeType = api.column.changeType.useMutation();
 
-  // --- dom refs (panel, anchor)
+  // Build a VirtualElement when we get a DOMRect or when we need to
+  // “fake” an anchor whose left is the original right edge.
+  const virtualRef: VirtualElement | null = useMemo(() => {
+    const srcRect =
+      rectProp ??
+      (anchorEl ? anchorEl.getBoundingClientRect() : null);
+
+    if (!srcRect) return null;
+
+    if (align === "leftAtRightEdge") {
+      // Zero-width virtual anchor whose left = original right.
+      const r = srcRect;
+      const vRect = {
+        x: r.right,
+        y: r.top,
+        width: 0,
+        height: r.height,
+        top: r.top,
+        right: r.right,
+        bottom: r.bottom,
+        left: r.right,
+      } as DOMRect;
+      return { getBoundingClientRect: () => vRect };
+    }
+
+    // Use the real rect as the reference
+    return { getBoundingClientRect: () => srcRect };
+  }, [anchorEl, rectProp, align]);
+
+  // Choose placement based on requested alignment
+  const placement =
+    align === "rightEdge"
+      ? "bottom-end"
+      : "bottom-start"; // covers leftEdge, leftAtRightEdge, and auto
+
+  const { x, y, strategy, refs, update } = useFloating({
+    placement,
+    strategy: "fixed",
+    middleware: [
+      offset(gap),
+      flip(),
+    ],
+  });
+
+  // Hook the anchor (HTMLElement or VirtualElement) and keep positioned
+  useEffect(() => {
+    if (!open) return;
+
+    if (virtualRef) {
+      refs.setReference(virtualRef);
+    } else if (anchorEl) {
+      refs.setReference(anchorEl);
+    } else {
+      return;
+    }
+
+    const floatingEl = refs.floating.current;
+    if (!floatingEl) return;
+
+    return autoUpdate(
+      (virtualRef ?? anchorEl)!,
+      floatingEl,
+      update
+    );
+  }, [open, virtualRef, anchorEl, refs, update]);
+
+  // Close on ESC / outside
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const anchorRect = useMemo(() => {
-    if (rectProp) return rectProp;
-    const el = anchorEl;
-    return el ? el.getBoundingClientRect() : null;
-  }, [rectProp, anchorEl]);
-
-  // --- position state
-  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
-  const MARGIN = 8;
-
-  const computePosition = useCallback(() => {
-    const panel = panelRef.current;
-    if (!panel || !anchorRect) return;
-
-    const r = anchorRect;
-    const pw = panel.offsetWidth;
-    const ph = panel.offsetHeight;
-
-    let left: number;
-
-    const tryLeft = () => r.left;
-    const tryCentered = () => r.left + r.width / 2 - pw / 2;
-    const tryRight = () => r.right - pw;
-    const tryLeftAtRight = () => r.right;
-
-    switch (align) {
-      case "leftEdge":
-        left = tryLeft();
-        break;
-      case "rightEdge":
-        left = tryRight();
-        break;
-      case "leftAtRightEdge":
-        left = tryLeftAtRight();
-        break;
-      default: {
-        // auto: left → centered → right
-        left = tryLeft();
-        if (left + pw + MARGIN > window.innerWidth) {
-          const c = tryCentered();
-          left =
-            c < MARGIN || c + pw > window.innerWidth - MARGIN
-              ? tryRight()
-              : c;
-        }
-      }
-    }
-
-    // clamp horizontal
-    left = Math.min(Math.max(MARGIN, left), window.innerWidth - pw - MARGIN);
-
-    // place below, clamp vertical
-    let top = r.bottom + gap;
-    top = Math.min(top, window.innerHeight - ph - MARGIN);
-    top = Math.max(MARGIN, top);
-
-    setCoords((prev) => (prev && prev.top === top && prev.left === left ? prev : { top, left }));
-  }, [anchorRect, align, gap]);
-
-  // recalc when open, on resize/scroll, with rAF for smoothness
-  useEffect(() => {
-    if (!open) return;
-
-    let raf = 0;
-    const schedule = () => {
-      if (raf) return;
-      raf = requestAnimationFrame(() => {
-        raf = 0;
-        computePosition();
-      });
-    };
-
-    schedule(); // after mount
-
-    // find closest scrollable ancestor for the anchor
-    let scrollTarget: Element | Window = window;
-    if (anchorEl) {
-      let p: HTMLElement | null = anchorEl.parentElement;
-      while (p) {
-        const s = getComputedStyle(p);
-        const scrollable =
-          /(auto|scroll|overlay)/.test(s.overflow) ||
-          /(auto|scroll|overlay)/.test(s.overflowX) ||
-          /(auto|scroll|overlay)/.test(s.overflowY);
-        if (scrollable) {
-          scrollTarget = p;
-          break;
-        }
-        p = p.parentElement;
-      }
-    }
-
-    scrollTarget.addEventListener("scroll", schedule, { passive: true } as AddEventListenerOptions);
-    window.addEventListener("resize", schedule, { passive: true });
-
-    return () => {
-      if (raf) cancelAnimationFrame(raf);
-      scrollTarget.removeEventListener("scroll", schedule as EventListener);
-      window.removeEventListener("resize", schedule);
-    };
-  }, [open, computePosition, anchorEl]);
-
-  // close on outside / Esc
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    const onClick = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (panelRef.current?.contains(t)) return;
-      if (anchorEl?.contains(t)) return;
-      onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    document.addEventListener("mousedown", onClick, { passive: true });
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.removeEventListener("mousedown", onClick);
-    };
-  }, [open, onClose, anchorEl]);
+  useCloseOnOutside(open, onClose, panelRef, anchorEl ?? undefined);
 
   const handleSubmit = async () => {
     const trimmed = name.trim();
     if (!trimmed) return;
 
     if (mode === "create") {
-      if (onCreate) {
-        // optimisticCreation
-        onCreate({ name: trimmed, type, position: initial?.position });
-        return; 
-      }
-    } else if (initial?.columnId) {
+      onCreate?.({ name: trimmed, type, position: initial?.position });
+      onClose();
+      return;
+    }
+
+    if (mode === "edit" && initial?.columnId) {
       if (trimmed !== initial.name) {
         await rename.mutateAsync({ columnId: initial.columnId, name: trimmed });
       }
       if (type !== initial.type) {
         await changeType.mutateAsync({ columnId: initial.columnId, type });
       }
+      await utils.column.listByTable.invalidate({ tableId });
+      await utils.row.list.invalidate({ tableId, skip: 0, take: 200 });
+      onClose();
     }
-
-    await utils.column.listByTable.invalidate({ tableId });
-    await utils.row.list.invalidate({ tableId, skip: 0, take: 200 });
-    onClose();
   };
 
   if (!open) return null;
@@ -235,11 +189,15 @@ export default function FieldEditorPopover({
   return (
     <Portal>
       <div
-        ref={panelRef}
-        style={{ position: "fixed", top: coords?.top, left: coords?.left }}
-        className="w-[280px] rounded-md border border-gray-200 bg-white shadow-lg p-3 z-[1001]"
+        ref={(node) => {
+          panelRef.current = node;
+          refs.setFloating(node);
+        }}
+        data-menulayer="true"
         role="dialog"
         aria-modal="true"
+        style={{ position: strategy, top: y ?? 0, left: x ?? 0 }}
+        className="w-[280px] rounded-md border border-gray-200 bg-white shadow-lg p-3 z-[1001]"
       >
         <div className="space-y-3">
           <div>
