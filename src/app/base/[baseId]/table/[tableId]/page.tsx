@@ -1,4 +1,4 @@
-import BaseGrid from "../../../../baseComponents/grid"; 
+import BaseGrid from "~/app/baseComponents/grid"; 
 import TableTabs from "./tabs";
 
 export default async function TablePage({
