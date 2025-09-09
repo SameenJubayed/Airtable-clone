@@ -11,8 +11,9 @@ import {
 } from "./hooks";
 import { useDynamicColumns, useRowNumberColumn } from "./columns";
 import TableView from "./tableView";
-import RowHeightMenu from "./RowHeightMenu";
 import FilterMenuPopover from "./FilterMenuPopover";
+import SortMenuPopover from "./SortMenuPopover";
+import RowHeightMenu from "./RowHeightMenu";
 import { isCuid } from "./isCuid";
 import { api } from "~/trpc/react";
 import { COL_W, ROW_H, ROW_H_MED, ROW_H_TALL, ROW_H_XT } from "./constants";
@@ -29,6 +30,7 @@ import SearchRoundedIcon from '@mui/icons-material/SearchRounded';
 import DvrOutlinedIcon from '@mui/icons-material/DvrOutlined';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FormatLineSpacingIcon from '@mui/icons-material/FormatLineSpacing';
+import AddIcon from "@mui/icons-material/Add";
 
 export default function BaseGrid({ tableId }: { tableId: string }) {
   const { columnsQ, rowsQ, data } = useGridData(tableId);
@@ -69,6 +71,10 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
   ////////////////////// FILTER MENU + STATE ///////////////////////////////////
   const [filterOpen, setFilterOpen] = useState(false);
   const filterBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  ////////////////////// SORT MENU + STATE /////////////////////////////////////
+  const [sortOpen, setSortOpen] = useState(false);
+  const sortBtnRef = useRef<HTMLButtonElement | null>(null);
 
   ////////////////////// ROW HEIGHT + PERSISTENCE //////////////////////////////
   const { rowHeight, setRowHeight } = useRowHeight(tableId);
@@ -180,7 +186,12 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
           </div>
 
           {/* RIGHT: everything else, aligned to the far right */}
-          <div className="ml-auto flex items-center gap-1">
+          <div className="ml-auto flex items-center gap-1">            
+            <button className={topBtnClass()} title="100k rows" aria-label="100k rows">
+              <AddIcon fontSize="small" />
+              {!compact && <span className="text-[13px]">100k Rows</span>}
+            </button>
+
             <button className={topBtnClass()} title="Hide fields" aria-label="Hide fields">
               <VisibilityOffOutlinedIcon fontSize="small" />
               {!compact && <span className="text-[13px]">Hide fields</span>}
@@ -211,10 +222,25 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
               {!compact && <span className="text-[13px]">Group</span>}
             </button>
 
-            <button className={topBtnClass()} title="Sort" aria-label="Sort">
+            <button
+              ref={sortBtnRef}
+              className={topBtnClass()}
+              title="Sort"
+              aria-label="Sort"
+              onClick={() => sortBtnRef.current && setSortOpen(v => !v)}
+              aria-haspopup="menu"
+              aria-expanded={sortOpen}
+            >
               <SwapVertIcon fontSize="small" />
               {!compact && <span className="text-[13px]">Sort</span>}
             </button>
+
+            <SortMenuPopover
+              open={sortOpen}
+              onClose={() => setSortOpen(false)}
+              anchorEl={sortBtnRef.current}
+              columns={(columnsQ.data ?? []).map(c => ({ id: c.id, name: c.name, type: c.type }))}
+            />
 
             <button className={topBtnClass()} title="Color" aria-label="Color">
               <FormatColorFillOutlinedIcon fontSize="small" />
