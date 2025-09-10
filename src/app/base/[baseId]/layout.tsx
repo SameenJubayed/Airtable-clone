@@ -23,7 +23,7 @@ export default async function BaseLayout({
       <BaseHeader baseId={base.id} initialName={base.name} />
 
       {/* Content: account for both header (top) and rail (left) */}
-      <main className="pt-14 pl-14 h-[calc(100vh-56px)] overflow-hidden">
+      <main className="pt-14 pl-14 h-[100vh]">
         {children}
       </main>
     </div>

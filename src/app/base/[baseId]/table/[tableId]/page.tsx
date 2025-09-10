@@ -1,12 +1,10 @@
+// app/base/[baseId]/table/[tableId]/page.tsx
 import BaseGrid from "~/app/baseComponents/grid"; 
 
 export default async function TablePage({
-  params,
-}: { params: Promise<{ tableId: string }> }) {
+  params
+}: { params: Promise<{ tableId: string }>}) {
   const { tableId } = await params;
-  return (
-    <>
-      <BaseGrid tableId={tableId} />
-    </>
-  );
+
+  return <BaseGrid tableId={tableId} />;
 }

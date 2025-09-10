@@ -1,7 +1,7 @@
 // app/base/[baseId]/table/[tableId]/layout.tsx
 import { type ReactNode } from "react";
-import TableTabs from "./tabs";
-import TableActionBar from "~/app/baseComponents/grid/TableActionBar";
+import TableTabs from "~/app/baseComponents/tabs";
+import TableActionBar from "~/app/baseComponents/TableActionBar";
 
 export default async function TableLayout({
   children,
