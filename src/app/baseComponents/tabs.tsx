@@ -2,7 +2,7 @@
 "use client";
 
 import { Fragment, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "~/trpc/react";
 import { Menu, MenuItem } from "~/app/baseComponents/grid/uiPopover";
 // MUI Icons
@@ -16,10 +16,12 @@ export default function TableTabs({
   activeTableId,
 }: { baseId: string; activeTableId: string }) {
   const router = useRouter();
+  const params = useSearchParams();
   const utils = api.useUtils();
 
   // Fetch tables for this base
   const tablesQ = api.table.listByBase.useQuery({ baseId });
+  const defaultView = api.view.firstViewForTable.useMutation();
 
   // ---------- RENAME ----------
   const rename = api.table.rename.useMutation({
@@ -40,7 +42,8 @@ export default function TableTabs({
 
     onSuccess: async (_data, vars) => {
       if (vars.tableId === activeTableId) {
-        router.replace(`/base/${baseId}/table/${activeTableId}`);
+        const q = params?.toString();
+        router.replace(`/base/${baseId}/table/${activeTableId}${q ? `?${q}` : ""}`);
       }
     },
   });
@@ -66,7 +69,9 @@ export default function TableTabs({
         const nextId = after[0]?.id ?? null;
         if (nextId) {
           navigatedTo = nextId;
-          router.replace(`/base/${baseId}/table/${nextId}`);
+          const result = await defaultView.mutateAsync({ tableId: nextId });
+          const viewId = result?.viewId;
+          router.replace(`/base/${baseId}/table/${nextId}?viewId=${viewId ?? ""}`);
         } else {
           // No tables left — go to base root
           router.replace(`/base/${baseId}`);
@@ -131,11 +136,11 @@ export default function TableTabs({
 
       return { previous, tempId };
     },
-    onSuccess: async ({ id }, _vars, ctx) => {
+    onSuccess: async ({ id, defaultViewId }, _vars, ctx) => {
       utils.table.listByBase.setData({ baseId }, (old) =>
         old?.map((t) => (t.id === ctx?.tempId ? { ...t, id } : t))
       );
-      router.replace(`/base/${baseId}/table/${id}`);
+      router.replace(`/base/${baseId}/table/${id}?viewId=${defaultViewId}`);
       await utils.table.listByBase.invalidate({ baseId });
     },
     onError: (_err, _vars, ctx) => {
@@ -152,6 +157,19 @@ export default function TableTabs({
   const tabs = tablesQ.data ?? [];
   const lastIsActive = tabs[tabs.length - 1]?.id === activeTableId;
 
+  // NEW: single place to navigate to a table WITH viewId
+  const navigateToTable = async (tableId: string) => {
+    try {
+      const result = await defaultView.mutateAsync({ tableId });
+      const viewId = result?.viewId;
+      const key = { tableId, viewId, skip: 0, take: 200 } as const;
+      await utils.row.list.ensureData?.(key) ?? utils.row.list.prefetch(key);
+      router.push(`/base/${baseId}/table/${tableId}?viewId=${viewId}`);
+    } catch {
+      router.push(`/base/${baseId}/table/${tableId}`); 
+    }
+  };
+
   return (
     <div className="h-8 w-full bg-gray-100">
       <div className="h-8 w-full flex items-stretch">
@@ -164,9 +182,8 @@ export default function TableTabs({
               if (isActive) {
                 setOpenMenuId((cur) => (cur === t.id ? null : t.id));
               } else {
-                // if any table menu is open, do not navigate.
-                if (openMenuId !== null) return;
-                router.push(`/base/${baseId}/table/${t.id}`);
+                if (openMenuId !== null) return; 
+                void navigateToTable(t.id);
               }
             };
 

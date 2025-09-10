@@ -19,6 +19,7 @@ import DeleteOutlineOutlinedIcon from "@mui/icons-material/DeleteOutlineOutlined
 
 type Props = {
   tableId: string;  
+  viewId?: string; 
   data: CellRecord[];
   columns: ColumnDef<CellRecord, unknown>[];
   columnSizing: ColumnSizingState;
@@ -105,13 +106,14 @@ function RowMenu({
 
 export default function TableView({ 
   tableId,
+  viewId,
   data, 
   columns, 
   columnSizing, 
   setColumnSizing
 }: Props) {  
-  const { insertAtEnd, insertAbove, insertBelow } = useOptimisticInsertRow(tableId);
-  const { deleteByIndex } = useOptimisticDeleteRow(tableId);
+  const { insertAtEnd, insertAbove, insertBelow } = useOptimisticInsertRow(tableId, viewId);
+  const { deleteByIndex } = useOptimisticDeleteRow(tableId, viewId); 
 
   // right-click menu state
   const [menuOpen, setMenuOpen] = useState(false);

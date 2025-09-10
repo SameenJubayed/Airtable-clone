@@ -1,5 +1,6 @@
 // app/baseComponents/grid/index.tsx
 "use client";
+import { useEffect } from "react";
 import {
   useGridData,
   useColumnSizingState, 
@@ -8,14 +9,13 @@ import {
 } from "./hooks";
 import { useDynamicColumns, useRowNumberColumn } from "./columns";
 import TableView from "./tableView";
-import { isCuid } from "./isCuid";
+import { useViews } from "../ViewsLayout";
 
-// ...imports stay the same, but REMOVE all the action-bar UI and related state
-export default function BaseGrid({ tableId }: { tableId: string }) {
-  const { columnsQ, rowsQ, data } = useGridData(tableId);
+export default function BaseGrid({ tableId, viewId }: { tableId: string; viewId: string | null }) {
+  const { columnsQ, rowsQ, data } = useGridData(tableId, viewId ?? undefined);
   const { columnSizing, setColumnSizing } = useColumnSizingState();
   const { editingKey, setEditingKey } = useEditingKey();
-  const updateCell = useOptimisticUpdateCell(tableId, rowsQ);
+  const updateCell = useOptimisticUpdateCell(tableId, viewId ?? undefined);
 
   const rowNumCol = useRowNumberColumn();
   const dynamicCols = useDynamicColumns({
@@ -23,21 +23,36 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
     editingKey, setEditingKey, updateCell, tableId,
   });
 
-  // keep your column width init + debounce save effects here unchanged...
 
-  const columns = [rowNumCol, ...dynamicCols];
-  const loading = columnsQ.isLoading || rowsQ.isLoading;
-  const creatingOptimistic = !isCuid(tableId);
+  // view-switch–aware loading
+  const { switchingViewId, setSwitchingViewId } = useViews();
+  const switching = switchingViewId != null && switchingViewId === (viewId ?? null);
 
-  if (creatingOptimistic) return <div className="p-4 text-sm text-gray-500">Creating table…</div>;
+  // Show loader only when:
+  //  - initial load OR
+  //  - we are in the middle of a view switch AND the new rows aren’t ready yet
+  const showLoader =
+    columnsQ.isLoading ||
+    rowsQ.isLoading ||
+    (switching && (rowsQ.status !== "success" || rowsQ.fetchStatus === "fetching"));
 
-  return loading ? (
-    <div className="p-4 text-sm text-gray-500">Loading grid…</div>
-  ) : (
+  // Once the new view’s rows are ready, clear the “switching” flag
+  useEffect(() => {
+    if (switching && rowsQ.status === "success" && rowsQ.fetchStatus !== "fetching") {
+      setSwitchingViewId(null);
+    }
+  }, [switching, rowsQ.status, rowsQ.fetchStatus, setSwitchingViewId]);
+
+  if (showLoader) {
+    return <div className="p-4 text-sm text-gray-500">Loading grid…</div>;
+  }
+
+  return (
     <TableView
       tableId={tableId}
+      viewId={viewId ?? undefined}
       data={data}
-      columns={columns}
+      columns={[rowNumCol, ...dynamicCols]}
       columnSizing={columnSizing}
       setColumnSizing={setColumnSizing}
     />

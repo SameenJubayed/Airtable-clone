@@ -12,14 +12,20 @@ type RowList = RouterOutputs["row"]["list"];
 type ColumnLite = { id: string; name: string; type: "TEXT" | "NUMBER" };
 type ColumnItem = RouterOutputs["column"]["listByTable"][number];
 
-export function useGridData(tableId: string) {
+export function useGridData(tableId: string, viewId?: string) {
   const enabled = isCuid(tableId); // don't run queries with temp ids
-  const key = { tableId, skip: 0, take: 200 } as const;
+  const rowKey = { tableId, viewId, skip: 0, take: 200 } as const;
   const columnsQ = api.column.listByTable.useQuery(
     { tableId },
-    { enabled }               // ⬅️ don't run until we have a real id
+    { enabled }              
   );
-  const rowsQ = api.row.list.useQuery(key, { enabled });
+  const rowsQ = api.row.list.useQuery(rowKey, {
+    enabled,
+    refetchOnMount: "always",        // fetch even if cached
+    refetchOnReconnect: "always",
+    refetchOnWindowFocus: false,
+    staleTime: 0,
+  });
 
   // Convert server rows+cells -> table rows
   const data: CellRecord[] = useMemo(() => {
@@ -47,9 +53,9 @@ export function useEditingKey() {
   return { editingKey, setEditingKey };
 }
 
-export function useOptimisticInsertRow(tableId: string) {
+export function useOptimisticInsertRow(tableId: string, viewId?: string) {
   const utils = api.useUtils();
-  const key = { tableId, skip: 0, take: 200 } as const;
+  const key = { tableId, viewId, skip: 0, take: 200 } as const;
 
   const enabled = isCuid(tableId);
   const columnsQ = api.column.listByTable.useQuery({ tableId }, { enabled });
@@ -164,9 +170,9 @@ export function useOptimisticInsertRow(tableId: string) {
   return { insertRow, insertAtEnd, insertAbove, insertBelow };
 }
 
-export function useOptimisticDeleteRow(tableId: string) {
+export function useOptimisticDeleteRow(tableId: string, viewId?: string) {
   const utils = api.useUtils();
-  const listKey = { tableId, skip: 0, take: 200 } as const;
+  const listKey = { tableId, viewId, skip: 0, take: 200 } as const;
   const rowsQ = api.row.list.useQuery(listKey);
 
   const del = api.row.delete.useMutation({
@@ -205,21 +211,19 @@ export function useOptimisticDeleteRow(tableId: string) {
   return { deleteById, deleteByIndex };
 }
 
-export function useOptimisticUpdateCell( 
-  tableId: string, 
-  rowsQ: ReturnType<typeof api.row.list.useQuery>
+export function useOptimisticUpdateCell(
+  tableId: string,
+  viewId?: string
 ) {
   const utils = api.useUtils();
-  const key = { tableId, skip: 0, take: 200 } as const;
+  const key = { tableId, viewId, skip: 0, take: 200 } as const;
 
   const updateCell = api.row.updateCell.useMutation({
     onMutate: async ({ rowId, columnId, textValue, numberValue }) => {
-      // Cancel any ongoing fetches
-      await utils.row.list.cancel(key);
-      // getting previous data for rollback
+      await utils.row.list.cancel(key);                
       const previousData = utils.row.list.getData(key);
 
-      utils.row.list.setData(key, (old) => {
+      utils.row.list.setData(key, (old) => {          
         if (!old) return old;
         return {
           ...old,
@@ -234,12 +238,20 @@ export function useOptimisticUpdateCell(
           ),
         };
       });
+
       return { previousData };
     },
-    onError: (_err, _var, ctx) => {
+
+    onError: (_err, _vars, ctx) => {
       if (ctx?.previousData) utils.row.list.setData(key, ctx.previousData);
     },
-    onSettled: () => { void rowsQ.refetch(); },
+
+    onSettled: () => {
+      // refresh current view
+      void utils.row.list.invalidate(key);
+      // optional: also mark all other views stale so switching will fetch fresh
+      void utils.row.list.invalidate(); 
+    },
   });
 
   return updateCell;

@@ -1,6 +1,6 @@
 // app/baseComponents/TableActionBar.tsx
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import {
   useGridData,
   useColumnSizingState, 
@@ -9,9 +9,10 @@ import {
 import FilterMenuPopover from "./grid/FilterMenuPopover";
 import SortMenuPopover from "./grid/SortMenuPopover";
 import RowHeightMenu from "./grid/RowHeightMenu";
-// import { useViews } from "./ViewsLayout";
+import { useViews } from "./ViewsLayout";
 
 import { api } from "~/trpc/react";
+import { useSearchParams } from "next/navigation";
 import { COL_W, ROW_H, ROW_H_MED, ROW_H_TALL, ROW_H_XT } from "./grid/constants";
 
 // MUI ICONS
@@ -28,11 +29,26 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FormatLineSpacingIcon from '@mui/icons-material/FormatLineSpacing';
 import AddIcon from "@mui/icons-material/Add";
 
+
 export default function BaseGrid({ tableId }: { tableId: string }) {
-  // for views
-  // const { open, setOpen } = useViews();
   const { columnsQ } = useGridData(tableId);
   const { columnSizing, setColumnSizing } = useColumnSizingState();
+
+  // for views
+  const { open, setOpen } = useViews();
+  const params = useSearchParams();
+  const activeViewId = params.get("viewId");
+  const viewsQ = api.view.listByTable.useQuery({ tableId });
+  const activeViewName = useMemo(() => {
+    const list = viewsQ.data ?? [];
+    if (!list.length) return "Grid view";
+    // if ?viewId is missing, fall back to the first/“Grid view”
+    return (
+      list.find((v) => v.id === activeViewId)?.name ||
+      list.find((v) => v.name === "Grid view")?.name ||
+      list[0]!.name
+    );
+  }, [viewsQ.data, activeViewId]);
 
   const utils = api.useUtils();
 
@@ -144,7 +160,7 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
               className={topBtnClass("w-8")} 
               aria-label="Table menu"
               title="Table menu"
-              // onClick={() => setOpen(!open)}
+              onClick={() => setOpen(!open)}
             >
               <MenuOutlinedIcon fontSize="small" />
             </button>
@@ -156,7 +172,7 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
               title="Change view"
             >
               <TableChartOutlinedIcon fontSize="small" className="opacity-80" style={{ color: "rgb(22, 110, 225)"}}/>
-              <span className="text-[13px] text-grey-600 font-medium">Grid view</span>
+              <span className="text-[13px] text-grey-600 font-medium">{activeViewName}</span>
               <span className="inline-block text-gray-500"><ExpandMoreIcon/></span>
             </button>
           </div>

@@ -12,9 +12,9 @@ export function CreateBaseCard() {
 
 
   const createMutation = api.base.createWithDefaults.useMutation({
-    onSuccess: async ({ baseId, tableId }) => {
+    onSuccess: async ({ baseId, tableId, viewId }) => {
       // navigate immediately
-      router.push(`/base/${baseId}/table/${tableId}`);
+      router.push(`/base/${baseId}/table/${tableId}?viewId=${viewId}`);
 
       // refresh the recently opened list in the background (don’t block navigation)
       await utils.base.listMine.invalidate();
