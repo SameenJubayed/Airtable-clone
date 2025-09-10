@@ -150,19 +150,28 @@ export const rowRouter = createTRPCRouter({
 
       // ORDER BY
       let orderBy: Prisma.Sql = Prisma.sql`ORDER BY r."position" ASC`;
+
       if (sorts.length) {
-        const s: ViewSort = sorts[0]!;
-        const colId = s.columnId;
-        const dir   = s.dir === "desc" ? Prisma.raw("DESC") : Prisma.raw("ASC");
-        const expr  = s.type === "NUMBER" ? Prisma.sql`c."numberValue"` : Prisma.sql`c."textValue"`;
+        const orderByParts: Prisma.Sql[] = [];
+
+        for (const s of sorts) {
+          const dir = s.dir === "desc" ? Prisma.raw("DESC") : Prisma.raw("ASC");
+          const expr = s.type === "NUMBER"
+            ? Prisma.sql`c."numberValue"`
+            : Prisma.sql`c."textValue"`;
+
+          orderByParts.push(Prisma.sql`
+            (
+              SELECT ${expr}
+              FROM "Cell" c
+              WHERE c."rowId" = r.id AND c."columnId" = ${s.columnId}
+              LIMIT 1
+            ) ${dir} NULLS LAST
+          `);
+        }
 
         orderBy = Prisma.sql`
-          ORDER BY (
-            SELECT ${expr}
-            FROM "Cell" c
-            WHERE c."rowId" = r.id AND c."columnId" = ${colId}
-            LIMIT 1
-          ) ${dir}, r."position" ASC
+          ORDER BY ${Prisma.join(orderByParts, ", ")}, r."position" ASC
         `;
       }
 

@@ -82,6 +82,15 @@ export const viewRouter = createTRPCRouter({
       return ctx.db.tableView.update({ where: { id: input.viewId }, data: { name: input.name } });
     }),
 
+  get: protectedProcedure
+    .input(z.object({ viewId: z.string().cuid() }))
+    .query(async ({ input, ctx }) => {
+      return ctx.db.tableView.findFirstOrThrow({
+        where: { id: input.viewId, table: { base: { createdById: ctx.session.user.id } } },
+        select: { id: true, name: true, search: true, filters: true, sorts: true, hidden: true, tableId: true },
+      });
+    }),
+
   updateConfig: protectedProcedure
     .input(z.object({
       viewId: z.string().cuid(),
