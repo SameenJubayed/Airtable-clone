@@ -82,7 +82,18 @@ export const tableRouter = createTRPCRouter({
         });
       }
 
-      return { id: table.id };
+      const view = await ctx.db.tableView.create({
+        data: {
+          tableId: table.id,
+          name: "Grid view",
+          search: null,
+          filters: [],
+          sorts: [],
+          hidden: [],
+        },
+      });
+
+      return { id: table.id, defaultViewId: view.id };
     }),
     
   firstIdByBase: protectedProcedure

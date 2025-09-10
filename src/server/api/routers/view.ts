@@ -1,3 +1,4 @@
+// server/api/routers/view.ts
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 
@@ -25,6 +26,23 @@ export const viewRouter = createTRPCRouter({
         where: { tableId: input.tableId },
         orderBy: { createdAt: "asc" },
       });
+    }),
+
+  firstViewForTable: protectedProcedure
+    .input(z.object({ tableId: z.string().cuid() }))
+    .mutation(async ({ input, ctx }) => {
+      // ownership check via base → user id
+      await ctx.db.table.findFirstOrThrow({
+        where: { id: input.tableId, base: { createdById: ctx.session.user.id } },
+        select: { id: true },
+      });
+
+      const existing = await ctx.db.tableView.findFirst({
+        where: { tableId: input.tableId },
+        orderBy: { createdAt: "asc" },
+        select: { id: true },
+      });
+      if (existing) return { viewId: existing.id };
     }),
 
   create: protectedProcedure

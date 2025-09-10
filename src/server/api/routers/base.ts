@@ -1,6 +1,7 @@
 // src/server/api/routers/base.ts
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
+import { viewRouter } from "./view";
 
 export const baseRouter = createTRPCRouter({
   listMine: protectedProcedure.query(async ({ ctx }) => {
@@ -23,6 +24,7 @@ export const baseRouter = createTRPCRouter({
   createWithDefaults: protectedProcedure
   .input(z.object({ name: z.string().optional() }))
   .mutation(async ({ ctx }) => {
+
     // create base
     const base = await ctx.db.base.create({
       data: {
@@ -32,7 +34,7 @@ export const baseRouter = createTRPCRouter({
       },
     });
 
-    // create first table with defaults
+    // Create first table with default columns + rows
     const table = await ctx.db.table.create({
       data: {
         baseId: base.id,
@@ -57,7 +59,39 @@ export const baseRouter = createTRPCRouter({
       },
     });
 
-    return { baseId: base.id, tableId: table.id };
+    // Create cells for every (row × column)
+    const [cols, rows] = await Promise.all([
+      ctx.db.column.findMany({ where: { tableId: table.id }, select: { id: true } }),
+      ctx.db.row.findMany({ where: { tableId: table.id }, select: { id: true } }),
+    ]);
+
+    if (cols.length && rows.length) {
+      await ctx.db.cell.createMany({
+        data: rows.flatMap((r) =>
+          cols.map((c) => ({
+            rowId: r.id,
+            columnId: c.id,
+            textValue: null,
+            numberValue: null,
+          }))
+        ),
+        skipDuplicates: true,
+      });
+    }
+
+    // Seed the default view so the sidebar has something to show
+    const view = await ctx.db.tableView.create({
+      data: {
+        tableId: table.id,
+        name: "Grid view",
+        search: null,
+        filters: [],
+        sorts: [],
+        hidden: [],
+      },
+    });
+
+    return { baseId: base.id, tableId: table.id, viewId: view.id };
   }),
 
   // Toggle star
