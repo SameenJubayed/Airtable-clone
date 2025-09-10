@@ -1,41 +1,157 @@
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 
 export const rowRouter = createTRPCRouter({
   list: protectedProcedure
-    .input(
-      z.object({
-        tableId: z.string().cuid(),
-        skip: z.number().int().min(0).default(0),
-        take: z.number().int().min(1).max(200).default(50),
-      }),
-    )
+    .input(z.object({
+      tableId: z.string().cuid(),
+      viewId: z.string().cuid().optional(),
+      skip: z.number().int().min(0).default(0),
+      take: z.number().int().min(1).max(200).default(50),
+    }))
     .query(async ({ input, ctx }) => {
-      // ensure user owns table via base
       await ctx.db.table.findFirstOrThrow({
         where: { id: input.tableId, base: { createdById: ctx.session.user.id } },
         select: { id: true },
       });
-      
 
-      const rows = await ctx.db.row.findMany({
-        where: { tableId: input.tableId },
-        orderBy: { position: "asc" },
-        skip: input.skip,
-        take: input.take,
-        select: { id: true, position: true, createdAt: true, updatedAt: true },
-      });
+      const view = input.viewId
+        ? await ctx.db.tableView.findFirst({
+            where: { id: input.viewId, tableId: input.tableId },
+          })
+        : null;
 
-      if (rows.length === 0) {
-        return { rows: [], cells: [] as Array<{ rowId: string; columnId: string; textValue: string | null; numberValue: number | null }> };
+      const filters = (view?.filters as any[] | null) ?? [];
+      const sorts   = (view?.sorts   as any[] | null) ?? [];
+      const search  = (view?.search  as string | null) ?? null;
+
+      // WHERE
+      const where: Prisma.Sql[] = [Prisma.sql`r."tableId" = ${input.tableId}`];
+
+      if (search && search.trim() !== "") {
+        const like = `%${search}%`;
+        where.push(Prisma.sql`
+          EXISTS (
+            SELECT 1 FROM "Cell" c
+            WHERE c."rowId" = r.id
+              AND (c."textValue" ILIKE ${like} OR c."numberValue"::text ILIKE ${like})
+          )
+        `);
       }
 
-      const rowIds = rows.map((r) => r.id);
+      for (const f of filters) {
+        const colId = f.columnId as string;
 
-      const cells = await ctx.db.cell.findMany({
-        where: { rowId: { in: rowIds } },
-        select: { rowId: true, columnId: true, textValue: true, numberValue: true },
-      });
+        if (f.op === "isEmpty") {
+          where.push(Prisma.sql`
+            EXISTS (
+              SELECT 1 FROM "Cell" c
+              WHERE c."rowId" = r.id AND c."columnId" = ${colId}
+                AND c."textValue" IS NULL AND c."numberValue" IS NULL
+            )
+          `);
+          continue;
+        }
+        if (f.op === "isNotEmpty") {
+          where.push(Prisma.sql`
+            EXISTS (
+              SELECT 1 FROM "Cell" c
+              WHERE c."rowId" = r.id AND c."columnId" = ${colId}
+                AND (c."textValue" IS NOT NULL OR c."numberValue" IS NOT NULL)
+            )
+          `);
+          continue;
+        }
+        if (f.op === "contains" || f.op === "notContains") {
+          const like = `%${String(f.value ?? "")}%`;
+          if (f.op === "contains") {
+            where.push(Prisma.sql`
+              EXISTS (
+                SELECT 1 FROM "Cell" c
+                WHERE c."rowId" = r.id AND c."columnId" = ${colId}
+                  AND (c."textValue" ILIKE ${like} OR c."numberValue"::text ILIKE ${like})
+              )
+            `);
+          } else {
+            where.push(Prisma.sql`
+              EXISTS (
+                SELECT 1 FROM "Cell" c
+                WHERE c."rowId" = r.id AND c."columnId" = ${colId}
+              )
+              AND NOT EXISTS (
+                SELECT 1 FROM "Cell" c
+                WHERE c."rowId" = r.id AND c."columnId" = ${colId}
+                  AND (c."textValue" ILIKE ${like} OR c."numberValue"::text ILIKE ${like})
+              )
+            `);
+          }
+          continue;
+        }
+        if (f.op === "eq") {
+          const v = String(f.value ?? "");
+          where.push(Prisma.sql`
+            EXISTS (
+              SELECT 1 FROM "Cell" c
+              WHERE c."rowId" = r.id AND c."columnId" = ${colId}
+                AND (c."textValue" = ${v} OR c."numberValue"::text = ${v})
+            )
+          `);
+          continue;
+        }
+        if (f.op === "gt" || f.op === "lt") {
+          const num = Number(f.value ?? 0);
+          const op  = f.op === "gt" ? Prisma.raw(">") : Prisma.raw("<");
+          where.push(Prisma.sql`
+            EXISTS (
+              SELECT 1 FROM "Cell" c
+              WHERE c."rowId" = r.id AND c."columnId" = ${colId}
+                AND c."numberValue" ${op} ${num}
+            )
+          `);
+          continue;
+        }
+      }
+
+      // ORDER BY
+      let orderBy: Prisma.Sql = Prisma.sql`ORDER BY r."position" ASC`;
+      if (sorts.length) {
+        const s     = sorts[0]!;
+        const colId = s.columnId as string;
+        const dir   = s.dir === "desc" ? Prisma.raw("DESC") : Prisma.raw("ASC");
+        const expr  = s.type === "NUMBER" ? Prisma.sql`c."numberValue"` : Prisma.sql`c."textValue"`;
+
+        orderBy = Prisma.sql`
+          ORDER BY (
+            SELECT ${expr}
+            FROM "Cell" c
+            WHERE c."rowId" = r.id AND c."columnId" = ${colId}
+            LIMIT 1
+          ) ${dir}, r."position" ASC
+        `;
+      }
+
+      const rows = await ctx.db.$queryRaw<
+        { id: string; position: number; createdAt: Date; updatedAt: Date }[]
+      >(Prisma.sql`
+        SELECT r.id, r."position", r."createdAt", r."updatedAt"
+        FROM "Row" r
+        WHERE ${Prisma.join(where, ' AND ')}  
+        ${orderBy}
+        OFFSET ${Prisma.raw(String(input.skip))}
+        LIMIT  ${Prisma.raw(String(input.take))}
+      `);
+
+      if (rows.length === 0) return { rows: [], cells: [] };
+
+      const rowIdsSql = Prisma.join(rows.map(r => Prisma.sql`${r.id}`)); 
+      const cells = await ctx.db.$queryRaw<
+        { rowId: string; columnId: string; textValue: string | null; numberValue: number | null }[]
+      >(Prisma.sql`
+        SELECT "rowId","columnId","textValue","numberValue"
+        FROM "Cell"
+        WHERE "rowId" IN (${rowIdsSql})
+      `);
 
       return { rows, cells };
     }),
