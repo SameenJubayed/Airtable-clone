@@ -1,17 +1,18 @@
-// app/baseComponents/grid/index.tsx
+// app/baseComponents/TableActionBar.tsx
 "use client";
 import { useEffect, useState, useRef } from "react";
 import {
   useGridData,
   useColumnSizingState, 
   useRowHeight 
-} from "./hooks";
-import FilterMenuPopover from "./FilterMenuPopover";
-import SortMenuPopover from "./SortMenuPopover";
-import RowHeightMenu from "./RowHeightMenu";
+} from "./grid/hooks";
+import FilterMenuPopover from "./grid/FilterMenuPopover";
+import SortMenuPopover from "./grid/SortMenuPopover";
+import RowHeightMenu from "./grid/RowHeightMenu";
+// import { useViews } from "./ViewsLayout";
 
 import { api } from "~/trpc/react";
-import { COL_W, ROW_H, ROW_H_MED, ROW_H_TALL, ROW_H_XT } from "./constants";
+import { COL_W, ROW_H, ROW_H_MED, ROW_H_TALL, ROW_H_XT } from "./grid/constants";
 
 // MUI ICONS
 import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
@@ -28,6 +29,8 @@ import FormatLineSpacingIcon from '@mui/icons-material/FormatLineSpacing';
 import AddIcon from "@mui/icons-material/Add";
 
 export default function BaseGrid({ tableId }: { tableId: string }) {
+  // for views
+  // const { open, setOpen } = useViews();
   const { columnsQ } = useGridData(tableId);
   const { columnSizing, setColumnSizing } = useColumnSizingState();
 
@@ -141,6 +144,7 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
               className={topBtnClass("w-8")} 
               aria-label="Table menu"
               title="Table menu"
+              // onClick={() => setOpen(!open)}
             >
               <MenuOutlinedIcon fontSize="small" />
             </button>

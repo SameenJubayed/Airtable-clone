@@ -1,4 +1,4 @@
-// app/base/[baseId]/table/[tableId]/tabs.tsx
+// app/baseComponents/tabs.tsx
 "use client";
 
 import { Fragment, useRef, useState } from "react";
