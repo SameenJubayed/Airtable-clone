@@ -1,7 +1,6 @@
 // src/server/api/routers/base.ts
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
-import { viewRouter } from "./view";
 
 export const baseRouter = createTRPCRouter({
   listMine: protectedProcedure.query(async ({ ctx }) => {

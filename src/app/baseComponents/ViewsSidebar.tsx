@@ -37,7 +37,9 @@ export default function ViewsSidebar({ tableId }: { tableId: string }) {
     const key = { tableId, viewId, skip: 0, take: 200 } as const;
     void utils.row.list.invalidate(key);
     try {
-      await (utils.row.list as any).ensureData?.(key) ?? utils.row.list.prefetch(key);
+      // evaluate the appropriate promise first, then await it to avoid an unused-expression
+      const promise = utils.row.list.ensureData?.(key) ?? utils.row.list.prefetch(key);
+      await promise;
     } catch {}
 
     const sp = new URLSearchParams(params.toString());

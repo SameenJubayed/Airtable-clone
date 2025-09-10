@@ -2,6 +2,40 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 
+const ViewFilterZ = z.object({
+  columnId: z.string().cuid(),
+  op: z.enum(["isEmpty","isNotEmpty","contains","notContains","eq","gt","lt"]),
+  value: z.union([z.string(), z.number()]).optional(),
+});
+type ViewFilter = z.infer<typeof ViewFilterZ>;
+
+const ViewSortZ = z.object({
+  columnId: z.string().cuid(),
+  type: z.enum(["TEXT","NUMBER"]),
+  dir: z.enum(["asc","desc"]),
+});
+type ViewSort = z.infer<typeof ViewSortZ>;
+
+function parseFilters(raw: unknown): ViewFilter[] {
+  const arr = Array.isArray(raw) ? raw : [];
+  const parsed: ViewFilter[] = [];
+  for (const item of arr) {
+    const r = ViewFilterZ.safeParse(item);
+    if (r.success) parsed.push(r.data);
+  }
+  return parsed;
+}
+
+function parseSorts(raw: unknown): ViewSort[] {
+  const arr = Array.isArray(raw) ? raw : [];
+  const parsed: ViewSort[] = [];
+  for (const item of arr) {
+    const r = ViewSortZ.safeParse(item);
+    if (r.success) parsed.push(r.data);
+  }
+  return parsed;
+}
+
 export const rowRouter = createTRPCRouter({
   list: protectedProcedure
     .input(z.object({
@@ -22,9 +56,10 @@ export const rowRouter = createTRPCRouter({
           })
         : null;
 
-      const filters = (view?.filters as any[] | null) ?? [];
-      const sorts   = (view?.sorts   as any[] | null) ?? [];
-      const search  = (view?.search  as string | null) ?? null;
+      const filters: ViewFilter[] = parseFilters(view?.filters);
+      const sorts: ViewSort[] = parseSorts(view?.sorts);
+      const rawSearch = view?.search;
+      const search: string | null = typeof rawSearch === "string" ? rawSearch : null;
 
       // WHERE
       const where: Prisma.Sql[] = [Prisma.sql`r."tableId" = ${input.tableId}`];
@@ -41,7 +76,7 @@ export const rowRouter = createTRPCRouter({
       }
 
       for (const f of filters) {
-        const colId = f.columnId as string;
+        const colId = f.columnId;
 
         if (f.op === "isEmpty") {
           where.push(Prisma.sql`
@@ -116,8 +151,8 @@ export const rowRouter = createTRPCRouter({
       // ORDER BY
       let orderBy: Prisma.Sql = Prisma.sql`ORDER BY r."position" ASC`;
       if (sorts.length) {
-        const s     = sorts[0]!;
-        const colId = s.columnId as string;
+        const s: ViewSort = sorts[0]!;
+        const colId = s.columnId;
         const dir   = s.dir === "desc" ? Prisma.raw("DESC") : Prisma.raw("ASC");
         const expr  = s.type === "NUMBER" ? Prisma.sql`c."numberValue"` : Prisma.sql`c."textValue"`;
 

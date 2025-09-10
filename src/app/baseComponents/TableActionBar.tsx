@@ -44,8 +44,8 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
     if (!list.length) return "Grid view";
     // if ?viewId is missing, fall back to the first/“Grid view”
     return (
-      list.find((v) => v.id === activeViewId)?.name ||
-      list.find((v) => v.name === "Grid view")?.name ||
+      list.find((v) => v.id === activeViewId)?.name ??
+      list.find((v) => v.name === "Grid view")?.name ??
       list[0]!.name
     );
   }, [viewsQ.data, activeViewId]);

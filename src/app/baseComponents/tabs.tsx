@@ -163,7 +163,8 @@ export default function TableTabs({
       const result = await defaultView.mutateAsync({ tableId });
       const viewId = result?.viewId;
       const key = { tableId, viewId, skip: 0, take: 200 } as const;
-      await utils.row.list.ensureData?.(key) ?? utils.row.list.prefetch(key);
+      const promise = utils.row.list.ensureData?.(key) ?? utils.row.list.prefetch(key);
+      await promise;
       router.push(`/base/${baseId}/table/${tableId}?viewId=${viewId}`);
     } catch {
       router.push(`/base/${baseId}/table/${tableId}`); 
