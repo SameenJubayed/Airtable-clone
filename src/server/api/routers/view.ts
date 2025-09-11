@@ -1,4 +1,5 @@
 // server/api/routers/view.ts
+import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 
@@ -94,6 +95,7 @@ export const viewRouter = createTRPCRouter({
   updateConfig: protectedProcedure
     .input(z.object({
       viewId: z.string().cuid(),
+      // these are OPTIONAL – we only update when a key is present
       search: z.string().nullable().optional(),
       filters: z.array(FilterZ).optional(),
       sorts: z.array(SortZ).optional(),
@@ -104,14 +106,25 @@ export const viewRouter = createTRPCRouter({
         where: { id: input.viewId, table: { base: { createdById: ctx.session.user.id } } },
         select: { id: true },
       });
+
+      const data: Prisma.TableViewUpdateInput = {};
+      // update ONLY provided keys; leave others untouched
+      if (Object.prototype.hasOwnProperty.call(input, "search")) {
+        data.search = input.search ?? null;
+      }
+      if (Object.prototype.hasOwnProperty.call(input, "filters")) {
+        data.filters = input.filters ?? []; // explicit clear allowed
+      }
+      if (Object.prototype.hasOwnProperty.call(input, "sorts")) {
+        data.sorts = input.sorts ?? []; // explicit clear allowed
+      }
+      if (Object.prototype.hasOwnProperty.call(input, "hidden")) {
+        data.hidden = input.hidden ?? [];
+      }
+
       return ctx.db.tableView.update({
         where: { id: input.viewId },
-        data: {
-          search: input.search ?? null,
-          filters: input.filters ?? [],
-          sorts: input.sorts ?? [],
-          hidden: input.hidden ?? [],
-        },
+        data,
       });
     }),
 
