@@ -190,7 +190,7 @@ export const viewRouter = createTRPCRouter({
           filters: true,
           sorts: true,
           hidden: true,
-          filtersLogic: true, // NEW
+          filtersLogic: true, 
         },
       });
     }),

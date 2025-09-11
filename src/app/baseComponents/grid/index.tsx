@@ -1,6 +1,6 @@
 // app/baseComponents/grid/index.tsx
 "use client";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import {
   useGridData,
   useColumnSizingState, 
@@ -10,6 +10,7 @@ import {
 import { useDynamicColumns, useRowNumberColumn } from "./columns";
 import TableView from "./tableView";
 import { useViews } from "../ViewsLayout";
+import { api } from "~/trpc/react";
 
 export default function BaseGrid({ tableId, viewId }: { tableId: string; viewId: string | null }) {
   const { columnsQ, rowsQ, data } = useGridData(tableId, viewId ?? undefined);
@@ -17,12 +18,27 @@ export default function BaseGrid({ tableId, viewId }: { tableId: string; viewId:
   const { editingKey, setEditingKey } = useEditingKey();
   const updateCell = useOptimisticUpdateCell(tableId, viewId ?? undefined);
 
+  const viewsQ = api.view.listByTable.useQuery({ tableId });
+
+  const hiddenIds = useMemo<string[]>(() => {
+    const list = viewsQ.data ?? [];
+    const active =
+      (viewId && list.find(v => v.id === viewId)) ??
+      list.find(v => v.name === "Grid view") ??
+      list[0];
+    const raw = (active as { hidden?: unknown } | undefined)?.hidden;
+    return Array.isArray(raw)
+      ? (raw as unknown[]).filter((x): x is string => typeof x === "string")
+      : [];
+  }, [viewsQ.data, viewId]);
+
   const rowNumCol = useRowNumberColumn();
   const dynamicCols = useDynamicColumns({
-    columnsData: columnsQ.data?.map((c) => ({ id: c.id, name: c.name, type: c.type, width: c.width })),
+    columnsData: columnsQ.data
+      ?.filter(c => !hiddenIds.includes(c.id))             
+      .map(c => ({ id: c.id, name: c.name, type: c.type, width: c.width })),
     editingKey, setEditingKey, updateCell, tableId,
   });
-
 
   // view-switch–aware loading
   const { switchingViewId, setSwitchingViewId } = useViews();

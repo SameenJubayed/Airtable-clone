@@ -10,6 +10,7 @@ import {
 import FilterMenuPopover from "./grid/FilterMenuPopover";
 import SortMenuPopover from "./grid/SortMenuPopover";
 import RowHeightMenu from "./grid/RowHeightMenu";
+import HideFieldsPopover from "./grid/HideFieldsPopover";
 import { useViews } from "./ViewsLayout";
 
 import { api } from "~/trpc/react";
@@ -28,7 +29,6 @@ import DvrOutlinedIcon from '@mui/icons-material/DvrOutlined';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FormatLineSpacingIcon from '@mui/icons-material/FormatLineSpacing';
 import AddIcon from "@mui/icons-material/Add";
-
 
 export default function BaseGrid({ tableId }: { tableId: string }) {
   const { columnsQ } = useGridData(tableId);
@@ -69,6 +69,10 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
       compact ? "w-8 px-0 justify-center" : "px-2 gap-1",
       extra,
     ].join(" ");
+
+  ////////////////////// HIDE MENU /////////////////////////////////////////////
+  const [hideOpen, setHideOpen] = useState(false);
+  const hideBtnRef = useRef<HTMLButtonElement | null>(null);
 
   ////////////////////// FILTER MENU + STATE ///////////////////////////////////
   const [filterOpen, setFilterOpen] = useState(false);
@@ -184,10 +188,27 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
               {!compact && <span className="text-[13px]">100k Rows</span>}
             </button>
 
-            <button className={topBtnClass()} title="Hide fields" aria-label="Hide fields">
-              <VisibilityOffOutlinedIcon fontSize="small" />
-              {!compact && <span className="text-[13px]">Hide fields</span>}
-            </button>
+          <button
+            ref={hideBtnRef}
+            className={topBtnClass()}
+            title="Hide fields"
+            aria-label="Hide fields"
+            onClick={() => setHideOpen((v) => !v)}
+            aria-haspopup="menu"
+            aria-expanded={hideOpen}
+          >
+            <VisibilityOffOutlinedIcon fontSize="small" />
+            {!compact && <span className="text-[13px]">Hide fields</span>}
+          </button>
+
+          <HideFieldsPopover
+            open={hideOpen}
+            onClose={() => setHideOpen(false)}
+            anchorEl={hideBtnRef.current}
+            columns={(columnsQ.data ?? []).map(c => ({ id: c.id, name: c.name, type: c.type }))}
+            tableId={tableId}
+            viewId={activeViewId}
+          />
 
             <button
               ref={filterBtnRef}
