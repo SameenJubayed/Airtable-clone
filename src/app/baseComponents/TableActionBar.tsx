@@ -1,6 +1,7 @@
 // app/baseComponents/TableActionBar.tsx
 "use client";
 import { useEffect, useState, useRef, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   useGridData,
   useColumnSizingState, 
@@ -12,7 +13,6 @@ import RowHeightMenu from "./grid/RowHeightMenu";
 import { useViews } from "./ViewsLayout";
 
 import { api } from "~/trpc/react";
-import { useSearchParams } from "next/navigation";
 import { COL_W, ROW_H, ROW_H_MED, ROW_H_TALL, ROW_H_XT } from "./grid/constants";
 
 // MUI ICONS
@@ -207,6 +207,8 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
               onClose={() => setFilterOpen(false)}
               anchorEl={filterBtnRef.current}
               columns={(columnsQ.data ?? []).map(c => ({ id: c.id, name: c.name, type: c.type }))}
+              tableId={tableId}
+              viewId={activeViewId}              
             />
 
             <button className={topBtnClass()} title="Group" aria-label="Group">
@@ -231,6 +233,8 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
               open={sortOpen}
               onClose={() => setSortOpen(false)}
               anchorEl={sortBtnRef.current}
+              tableId={tableId}
+              viewId={activeViewId}
               columns={(columnsQ.data ?? []).map(c => ({ id: c.id, name: c.name, type: c.type }))}
             />
 
