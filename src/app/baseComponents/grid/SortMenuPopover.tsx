@@ -1,7 +1,7 @@
 // app/baseComponents/grid/SortMenuPopover.tsx
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Portal from "./Portal";
 import {
   useCloseOnOutside,
@@ -21,13 +21,24 @@ type ColumnLite = { id: string; name: string; type: "TEXT" | "NUMBER" };
 type DirUI = "ASC" | "DESC";
 type SortRow = { id: string; fieldId: string; dir: DirUI };
 
+type ServerSort = { columnId: string; type: "TEXT" | "NUMBER"; dir: "asc" | "desc" };
+function isServerSort(x: unknown): x is ServerSort {
+  if (!x || typeof x !== "object") return false;
+  const o = x as Record<string, unknown>;
+  return (
+    typeof o.columnId === "string" &&
+    (o.type === "TEXT" || o.type === "NUMBER") &&
+    (o.dir === "asc" || o.dir === "desc")
+  );
+}
+
 export default function SortMenuPopover({
   open,
   onClose,
   anchorEl,
   columns,
   tableId,
-  viewId, // <-- new
+  viewId,
 }: {
   open: boolean;
   onClose: () => void;
@@ -44,13 +55,15 @@ export default function SortMenuPopover({
     open,
     "bottom-end" as Placement
   );
-
   useCloseOnOutside(open, onClose, panelRef, anchorEl);
 
   // ---------- state ----------
   const [rows, setRows] = useState<SortRow[]>([]);
   const [autoSort, setAutoSort] = useState(true);
   const mode: "pick" | "configure" = rows.length ? "configure" : "pick";
+
+  // Keep a canonical snapshot of the last payload we sent (or hydrated)
+  const lastPayloadRef = useRef<string>("");
 
   // Load current sorts for this view
   const viewQ = api.view.get.useQuery(
@@ -61,13 +74,24 @@ export default function SortMenuPopover({
   // Initialize rows whenever we open for a (new) view
   useEffect(() => {
     if (!open || !viewQ.data) return;
-    const current = Array.isArray(viewQ.data.sorts) ? viewQ.data.sorts : [];
+
+    const sortsUnknown = (viewQ.data as { sorts?: unknown } | undefined)?.sorts;
+    const current: ServerSort[] = Array.isArray(sortsUnknown)
+      ? (sortsUnknown as unknown[]).filter(isServerSort)
+      : [];
+
+    // Hydrate UI rows
     setRows(
-      current.map((s: any) => ({
+      current.map((s) => ({
         id: crypto.randomUUID(),
-        fieldId: s.columnId as string,
-        dir: (s.dir ?? "asc").toString().toUpperCase() as DirUI,
+        fieldId: s.columnId,
+        dir: s.dir === "desc" ? "DESC" : "ASC",
       }))
+    );
+
+    // Prime the "last sent" snapshot so opening the menu doesn't immediately re-save
+    lastPayloadRef.current = JSON.stringify(
+      current.map((s) => ({ columnId: s.columnId, type: s.type, dir: s.dir }))
     );
   }, [open, viewQ.data]);
 
@@ -76,62 +100,77 @@ export default function SortMenuPopover({
   const labelForDir = (t: ColumnLite["type"], d: DirUI) =>
     t === "NUMBER" ? (d === "ASC" ? "1 → 9" : "9 → 1") : d === "ASC" ? "A → Z" : "Z → A";
 
-  const rowsToPayload = () =>
-    rows.map((r) => {
-      const col = fieldById(r.fieldId)!;
+  // Stable builder for the server payload
+  const rowsToPayload = useCallback((): ServerSort[] => {
+    return rows.map((r) => {
+      const col = columns.find((c) => c.id === r.fieldId);
       return {
         columnId: r.fieldId,
-        type: col.type,
-        dir: r.dir.toLowerCase() as "asc" | "desc",
+        type: col?.type ?? "TEXT",
+        dir: r.dir === "ASC" ? "asc" : "desc",
       };
     });
-
+  }, [rows, columns]);
 
   const updateConfig = api.view.updateConfig.useMutation({
     onSuccess: () => {
       if (!viewId) return;
-      // refresh rows
+
+      // refresh rows in the grid
       void utils.row.list.invalidate({ tableId, viewId, skip: 0, take: 200 });
 
+      // Keep caches in sync with what we just saved
       const payload = rowsToPayload();
-
-      // keep single-view cache in sync (already present)
       utils.view.get.setData({ viewId }, (old) =>
         old ? { ...old, sorts: payload } : old
       );
-      // also keep list cache in sync (Filter menu hydrates from list in your code)
       utils.view.listByTable.setData({ tableId }, (old) =>
         old?.map((v) => (v.id === viewId ? { ...v, sorts: payload } : v))
       );
     },
   });
 
-  // Auto-save (debounced) when autoSort is ON
-  useEffect(() => {
-    if (!open || !autoSort || !viewId) return;
-    const t = setTimeout(() => {
-      updateConfig.mutate({ viewId, sorts: rowsToPayload() });
-    }, 200);
-    return () => clearTimeout(t);
-  }, [rows, autoSort, open, viewId]);
+  // Stable committer (avoid depending directly on mutation object in the effect)
+  const commitSorts = useCallback(
+    (payload: ServerSort[]) => {
+      if (!viewId) return;
+      updateConfig.mutate({ viewId, sorts: payload });
+    },
+    [updateConfig, viewId]
+  );
 
-  // Single open inline submenu across all rows
+  // Auto-save ONLY when actual sort payload changes (debounced)
+  useEffect(() => {
+    if (!autoSort || !viewId) return; // no-op if autosort is off or no view
+
+    const payloadArr = rowsToPayload();
+    const payloadStr = JSON.stringify(payloadArr);
+
+    // Dedup: if identical to last snapshot, do nothing
+    if (payloadStr === lastPayloadRef.current) return;
+
+    const t = setTimeout(() => {
+      lastPayloadRef.current = payloadStr; // record before sending to avoid bursts
+      commitSorts(payloadArr);
+    }, 200);
+
+    return () => clearTimeout(t);
+  }, [rowsToPayload, autoSort, viewId, commitSorts]);
+
+  // ---------- UI: submenu mgmt ----------
   const [openSubmenu, setOpenSubmenu] =
     useState<null | { rowId: string; kind: "field" | "dir" }>(null);
 
-  // Close only the submenu on inside-panel background clicks
   useEffect(() => {
     if (!open) return;
     const panel = panelRef.current;
     if (!panel) return;
-
     const onPanelMouseDown = (e: MouseEvent) => {
       const t = e.target as HTMLElement;
       const insideSubmenu = t.closest('[data-submenu="true"]');
       const onTrigger = t.closest('[data-submenu-trigger="true"]');
       if (!insideSubmenu && !onTrigger) setOpenSubmenu(null);
     };
-
     panel.addEventListener("mousedown", onPanelMouseDown);
     return () => panel.removeEventListener("mousedown", onPanelMouseDown);
   }, [open]);
@@ -297,7 +336,7 @@ export default function SortMenuPopover({
                         </span>
                       </div>
 
-                      {/* simple move up/down controls (so i dont have to do drag) */}
+                      {/* simple move up/down controls */}
                       <div className="pl-1 text-xs text-gray-400">
                         <button
                           className="mr-2 hover:text-gray-700"
@@ -305,7 +344,7 @@ export default function SortMenuPopover({
                             setRows((prev) => {
                               if (idx === 0) return prev;
                               const next = [...prev];
-                              [next[idx - 1], next[idx]] = [next[idx] as SortRow, next[idx - 1] as SortRow];
+                              [next[idx - 1], next[idx]] = [next[idx]!, next[idx - 1]!];
                               return next;
                             })
                           }
@@ -318,7 +357,7 @@ export default function SortMenuPopover({
                             setRows((prev) => {
                               if (idx === prev.length - 1) return prev;
                               const next = [...prev];
-                              [next[idx + 1], next[idx]] = [next[idx] as SortRow, next[idx + 1] as SortRow];
+                              [next[idx + 1], next[idx]] = [next[idx]!, next[idx + 1]!];
                               return next;
                             })
                           }
@@ -374,7 +413,9 @@ export default function SortMenuPopover({
                         className="h-8 px-3 rounded-sm text-sm text-white bg-blue-600 hover:bg-blue-700"
                         onClick={() => {
                           if (!viewId) return;
-                          updateConfig.mutate({ viewId, sorts: rowsToPayload() });
+                          const payload = rowsToPayload();
+                          lastPayloadRef.current = JSON.stringify(payload); // keep dedup in sync
+                          commitSorts(payload);
                           onClose();
                         }}
                       >

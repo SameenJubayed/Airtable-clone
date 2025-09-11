@@ -6,12 +6,12 @@ import { useEffect, useMemo, useRef } from "react";
 
 // Icons
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
-import ContentCopyOutlinedIcon from "@mui/icons-material/ContentCopyOutlined";
+// import ContentCopyOutlinedIcon from "@mui/icons-material/ContentCopyOutlined";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
-import SortByAlphaOutlinedIcon from "@mui/icons-material/SortByAlphaOutlined";
-import FilterListOutlinedIcon from "@mui/icons-material/FilterListOutlined";
-import VisibilityOffOutlinedIcon from "@mui/icons-material/VisibilityOffOutlined";
+// import SortByAlphaOutlinedIcon from "@mui/icons-material/SortByAlphaOutlined";
+// import FilterListOutlinedIcon from "@mui/icons-material/FilterListOutlined";
+// import VisibilityOffOutlinedIcon from "@mui/icons-material/VisibilityOffOutlined";
 import DeleteOutlineOutlinedIcon from "@mui/icons-material/DeleteOutlineOutlined";
 
 // Floating UI
@@ -46,11 +46,11 @@ export default function ColumnHeaderMenu({
   onEdit,
   onInsertLeft,
   onInsertRight,
-  onDuplicate,
-  onSortAsc,
-  onSortDesc,
-  onFilter,
-  onHide,
+  // onDuplicate,
+  // onSortAsc,
+  // onSortDesc,
+  // onFilter,
+  // onHide,
   onDelete,
 }: Props) {
   const panelRef = useRef<HTMLDivElement | null>(null);

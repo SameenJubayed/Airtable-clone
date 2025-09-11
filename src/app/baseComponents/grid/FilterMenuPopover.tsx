@@ -69,6 +69,8 @@ export type Cond = {
   value: string;
 };
 
+type ServerFilterPayload = { columnId: string; op: ServerOp; value?: string | number };
+
 /* ------------------------------ Memo Row ---------------------------------- */
 
 type RowProps = {
@@ -326,6 +328,8 @@ export default function FilterMenuPopover({
     },
   });
 
+
+
   // --- Read active view to hydrate popover
   const viewsQ = api.view.listByTable.useQuery({ tableId }, { enabled: !!tableId });
   const { data: viewList, isSuccess: viewsLoaded } = viewsQ;
@@ -343,7 +347,7 @@ export default function FilterMenuPopover({
     if (!viewsLoaded) return; // don't clobber local state while loading
     if (!activeView) return;
 
-    const raw = (activeView as any).filters as
+    const raw = activeView.filters as
       | { columnId: string; op: ServerOp; value?: string | number }[]
       | undefined;
 
@@ -364,7 +368,7 @@ export default function FilterMenuPopover({
   }, [open, viewsLoaded, activeView]);
 
   // Build server payload from UI state
-  const buildServerFilters = useCallback(() => {
+  const buildServerFilters = useCallback<() => ServerFilterPayload[]>(() => {
     return conds
       .filter((c) => !!c.fieldId)
       .map((c) => {
@@ -375,29 +379,27 @@ export default function FilterMenuPopover({
           op === "isEmpty" || op === "isNotEmpty"
             ? undefined
             : col?.type === "NUMBER"
-            ? c.value === ""
-              ? undefined
-              : Number(c.value)
+            ? c.value === "" ? undefined : Number(c.value)
             : c.value;
 
         return { columnId: c.fieldId!, op, ...(val === undefined ? {} : { value: val }) };
       });
   }, [conds, columns]);
 
-  // Auto-save on EVERY change (even when popover is closed)
+  // Auto-save on EVERY change 
   useEffect(() => {
-    if (!open) return; 
-    if (!viewId) return;
-    const payload = JSON.stringify(buildServerFilters());
-    if (payload === lastSentRef.current) return;
+    if (!open || !viewId) return;
+    const filtersPayload = buildServerFilters();
+    const payloadKey = JSON.stringify(filtersPayload);
+    if (payloadKey === lastSentRef.current) return;
 
     const t = window.setTimeout(() => {
-      lastSentRef.current = payload;
-      updateView.mutate({ viewId, filters: JSON.parse(payload) });
-    }, 250); // debounce for rapid typing
+      lastSentRef.current = payloadKey;
+      updateView.mutate({ viewId, filters: filtersPayload });
+    }, 250);
 
     return () => window.clearTimeout(t);
-  }, [buildServerFilters, viewId, updateView]);
+  }, [open, viewId, buildServerFilters, updateView]);
 
   if (!open) return null;
 
