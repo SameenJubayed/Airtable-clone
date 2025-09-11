@@ -1,7 +1,7 @@
 // app/baseComponents/grid/FilterMenuPopover.tsx
 "use client";
 
-import React, { useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Portal from "./Portal";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteOutlineOutlinedIcon from "@mui/icons-material/DeleteOutlineOutlined";
@@ -15,16 +15,17 @@ import {
   DD,
 } from "./uiPopover";
 import type { Placement } from "@floating-ui/react";
+import { api } from "~/trpc/react";
 
 /* ----------------------------- Types & Labels ----------------------------- */
 
 type ColumnLite = { id: string; name: string; type: "TEXT" | "NUMBER" };
+type ServerOp = "contains" | "notContains" | "eq" | "isEmpty" | "isNotEmpty" | "gt" | "lt";
 
 export type Operator =
   | "contains"
   | "not_contains"
   | "is"
-  | "is_not"
   | "is_empty"
   | "is_not_empty"
   | "gt"
@@ -34,11 +35,31 @@ const OP_LABEL: Record<Operator, string> = {
   contains: "contains",
   not_contains: "does not contain",
   is: "is",
-  is_not: "is not",
   is_empty: "is empty",
   is_not_empty: "is not empty",
   gt: "greater than",
   lt: "less than",
+};
+
+// UI <-> server mapping
+const toServerOp: Record<Operator, ServerOp> = {
+  contains: "contains",
+  not_contains: "notContains",
+  is: "eq",
+  is_empty: "isEmpty",
+  is_not_empty: "isNotEmpty",
+  gt: "gt",
+  lt: "lt",
+};
+
+const fromServerOp: Record<ServerOp, Operator> = {
+  contains: "contains",
+  notContains: "not_contains",
+  eq: "is",
+  isEmpty: "is_empty",
+  isNotEmpty: "is_not_empty",
+  gt: "gt",
+  lt: "lt",
 };
 
 export type Cond = {
@@ -80,7 +101,7 @@ export const Row: React.FC<RowProps> = React.memo(function Row({
   const OP_ITEMS: Operator[] =
     colType === "NUMBER"
       ? (["gt", "lt"] as const)
-      : (["contains", "not_contains", "is", "is_not", "is_empty", "is_not_empty"] as const);
+      : (["contains", "not_contains", "is", "is_empty", "is_not_empty"] as const);
 
   // per-row anchors & open states
   const logicBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -169,8 +190,8 @@ export const Row: React.FC<RowProps> = React.memo(function Row({
                             // TEXT and NUMBER ops are disjoint, always reset
                             op: col.type === "NUMBER" ? "gt" : "contains",
                           }
-                        : x
-                    )
+                        : x,
+                    ),
                   );
                   setFieldOpen(false);
                 }}
@@ -207,8 +228,8 @@ export const Row: React.FC<RowProps> = React.memo(function Row({
                             op,
                             value: op === "is_empty" || op === "is_not_empty" ? "" : x.value,
                           }
-                        : x
-                    )
+                        : x,
+                    ),
                   );
                   setOpOpen(false);
                 }}
@@ -228,7 +249,7 @@ export const Row: React.FC<RowProps> = React.memo(function Row({
           value={isEmptyOp ? "" : c.value}
           onChange={(e) =>
             setConds((prev) =>
-              prev.map((x) => (x.id === c.id ? { ...x, value: e.target.value } : x))
+              prev.map((x) => (x.id === c.id ? { ...x, value: e.target.value } : x)),
             )
           }
           placeholder={isEmptyOp ? undefined : "Enter a value"}
@@ -249,7 +270,7 @@ export const Row: React.FC<RowProps> = React.memo(function Row({
         </button>
         <span
           className={[segCls(false, true), "w-8 justify-center text-gray-500 cursor-grab"].join(
-            " "
+            " ",
           )}
         >
           <DragIndicatorOutlinedIcon fontSize="small" className="text-gray-400" />
@@ -266,26 +287,118 @@ export default function FilterMenuPopover({
   onClose,
   anchorEl,
   columns,
+  tableId,
+  viewId,
 }: {
   open: boolean;
   onClose: () => void;
   anchorEl: HTMLElement | null;
   columns: ColumnLite[];
+  tableId: string;
+  viewId?: string | null;
 }) {
   const panelRef = useRef<HTMLDivElement | null>(null);
 
+  // NOTE: backend currently ANDs all filters; we keep UI logic state for later.
   const [logic, setLogic] = useState<"and" | "or">("and");
   const [conds, setConds] = useState<Cond[]>([]);
 
   const width = conds.length === 0 ? 328 : 590;
 
-  const { x, y, strategy, refs } = useFloatingForAnchor(
-    anchorEl,
-    open,
-    "bottom-end" as Placement
+  const { x, y, strategy, refs } = useFloatingForAnchor(anchorEl, open, "bottom-end" as Placement);
+  useCloseOnOutside(open, onClose, panelRef, anchorEl);
+
+  const utils = api.useUtils();
+
+  // --- Save to server (write-through cache on success)
+  const updateView = api.view.updateConfig.useMutation({
+    onSuccess: async (updated) => {
+      // keep list cache in sync
+      utils.view.listByTable.setData({ tableId }, (old) =>
+        old?.map((v) => (v.id === updated.id ? { ...v, filters: updated.filters } : v)),
+      );
+      // keep single-view cache in sync (Sort menu reads from here)
+      utils.view.get.setData({ viewId: updated.id }, (old) =>
+        old ? { ...old, filters: updated.filters } : old,
+      );
+      // refresh rows for this view
+      await utils.row.list.invalidate({ tableId, viewId: updated.id, skip: 0, take: 200 });
+    },
+  });
+
+  // --- Read active view to hydrate popover
+  const viewsQ = api.view.listByTable.useQuery({ tableId }, { enabled: !!tableId });
+  const { data: viewList, isSuccess: viewsLoaded } = viewsQ;
+  const activeView = useMemo(
+    () => viewList?.find((v) => v.id === (viewId ?? "")),
+    [viewList, viewId],
   );
 
-  useCloseOnOutside(open, onClose, panelRef, anchorEl);
+  // Keep a payload mirror to avoid re-posting the same thing
+  const lastSentRef = useRef<string>("");
+
+  // Hydrate from server when popover opens — but only after views are loaded.
+  useEffect(() => {
+    if (!open) return;
+    if (!viewsLoaded) return; // don't clobber local state while loading
+    if (!activeView) return;
+
+    const raw = (activeView as any).filters as
+      | { columnId: string; op: ServerOp; value?: string | number }[]
+      | undefined;
+
+    // If DB has no filters, show empty builder; otherwise map to UI state
+    const nextConds: Cond[] =
+      (raw ?? []).map((f) => ({
+        id: crypto.randomUUID(),
+        fieldId: f.columnId,
+        op: fromServerOp[f.op],
+        value: f.value == null ? "" : String(f.value),
+      })) ?? [];
+
+    setConds(nextConds);
+
+    // Align the dedup key so auto-save doesn't immediately re-send on open
+    const canonicalPayload = JSON.stringify(raw ?? []);
+    lastSentRef.current = canonicalPayload;
+  }, [open, viewsLoaded, activeView]);
+
+  // Build server payload from UI state
+  const buildServerFilters = useCallback(() => {
+    return conds
+      .filter((c) => !!c.fieldId)
+      .map((c) => {
+        const col = columns.find((cc) => cc.id === c.fieldId);
+        const op = toServerOp[c.op];
+
+        const val =
+          op === "isEmpty" || op === "isNotEmpty"
+            ? undefined
+            : col?.type === "NUMBER"
+            ? c.value === ""
+              ? undefined
+              : Number(c.value)
+            : c.value;
+
+        return { columnId: c.fieldId!, op, ...(val === undefined ? {} : { value: val }) };
+      });
+  }, [conds, columns]);
+
+  // Auto-save on EVERY change (even when popover is closed)
+  useEffect(() => {
+    if (!open) return; 
+    if (!viewId) return;
+    const payload = JSON.stringify(buildServerFilters());
+    if (payload === lastSentRef.current) return;
+
+    const t = window.setTimeout(() => {
+      lastSentRef.current = payload;
+      updateView.mutate({ viewId, filters: JSON.parse(payload) });
+    }, 250); // debounce for rapid typing
+
+    return () => window.clearTimeout(t);
+  }, [buildServerFilters, viewId, updateView]);
+
   if (!open) return null;
 
   const FIELD_MENU_W = 180;
@@ -315,6 +428,7 @@ export default function FilterMenuPopover({
       <button
         type="button"
         className="text-sm text-gray-600 hover:text-black cursor-pointer flex items-center"
+        onClick={() => void 0 /* groups not implemented yet */}
       >
         <AddIcon fontSize="small" className="mr-1" />
         Add condition group
@@ -364,7 +478,7 @@ export default function FilterMenuPopover({
           )}
         </div>
 
-        {/* Bottom actions */}
+        {/* Add bar */}
         <div className="h-[34px] px-2 pb-2">{addBar}</div>
       </div>
     </Portal>
