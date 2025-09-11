@@ -83,6 +83,8 @@ type RowProps = {
   FIELD_MENU_W: number;
   OP_MENU_W: number;
   LOGIC_MENU_W: number;
+  onStartTyping: () => void;   // NEW
+  onStopTyping: () => void;    // NEW
 };
 
 export const Row: React.FC<RowProps> = React.memo(function Row({
@@ -95,6 +97,8 @@ export const Row: React.FC<RowProps> = React.memo(function Row({
   FIELD_MENU_W,
   OP_MENU_W,
   LOGIC_MENU_W,
+  onStartTyping,
+  onStopTyping,
 }) {
   const col = columns.find((x) => x.id === c.fieldId) ?? columns[0];
   const fieldName = col?.name ?? "Name";
@@ -249,6 +253,13 @@ export const Row: React.FC<RowProps> = React.memo(function Row({
           step={isNumber ? "any" : undefined}
           disabled={isEmptyOp}
           value={isEmptyOp ? "" : c.value}
+          onFocus={onStartTyping}                               
+          onBlur={onStopTyping}                                 
+          onKeyDown={(e) => {                                     
+            if (e.key === "Enter" || e.key === "Escape") {
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
           onChange={(e) =>
             setConds((prev) =>
               prev.map((x) => (x.id === c.id ? { ...x, value: e.target.value } : x)),
@@ -304,6 +315,7 @@ export default function FilterMenuPopover({
   // NOTE: backend currently ANDs all filters; we keep UI logic state for later.
   const [logic, setLogic] = useState<"and" | "or">("and");
   const [conds, setConds] = useState<Cond[]>([]);
+  const [isTyping, setIsTyping] = useState(false);                  // NEW
 
   const width = conds.length === 0 ? 328 : 590;
 
@@ -315,20 +327,15 @@ export default function FilterMenuPopover({
   // --- Save to server (write-through cache on success)
   const updateView = api.view.updateConfig.useMutation({
     onSuccess: async (updated) => {
-      // keep list cache in sync
       utils.view.listByTable.setData({ tableId }, (old) =>
         old?.map((v) => (v.id === updated.id ? { ...v, filters: updated.filters } : v)),
       );
-      // keep single-view cache in sync (Sort menu reads from here)
       utils.view.get.setData({ viewId: updated.id }, (old) =>
         old ? { ...old, filters: updated.filters } : old,
       );
-      // refresh rows for this view
       await utils.row.list.invalidate({ tableId, viewId: updated.id, skip: 0, take: 200 });
     },
   });
-
-
 
   // --- Read active view to hydrate popover
   const viewsQ = api.view.listByTable.useQuery({ tableId }, { enabled: !!tableId });
@@ -341,17 +348,16 @@ export default function FilterMenuPopover({
   // Keep a payload mirror to avoid re-posting the same thing
   const lastSentRef = useRef<string>("");
 
-  // Hydrate from server when popover opens — but only after views are loaded.
+  // Hydrate from server on open
   useEffect(() => {
     if (!open) return;
-    if (!viewsLoaded) return; // don't clobber local state while loading
+    if (!viewsLoaded) return;
     if (!activeView) return;
 
     const raw = activeView.filters as
       | { columnId: string; op: ServerOp; value?: string | number }[]
       | undefined;
 
-    // If DB has no filters, show empty builder; otherwise map to UI state
     const nextConds: Cond[] =
       (raw ?? []).map((f) => ({
         id: crypto.randomUUID(),
@@ -362,9 +368,8 @@ export default function FilterMenuPopover({
 
     setConds(nextConds);
 
-    // Align the dedup key so auto-save doesn't immediately re-send on open
-    const canonicalPayload = JSON.stringify(raw ?? []);
-    lastSentRef.current = canonicalPayload;
+    // Snapshot what the server currently has
+    lastSentRef.current = JSON.stringify(raw ?? []);
   }, [open, viewsLoaded, activeView]);
 
   // Build server payload from UI state
@@ -386,20 +391,35 @@ export default function FilterMenuPopover({
       });
   }, [conds, columns]);
 
-  // Auto-save on EVERY change 
+  // Only commit when:
+  // - user is NOT typing (blur/Enter/Escape already happened),
+  // - payload differs from last sent,
+  // - Only include COMPLETE conditions (ops that need a value must have one)
   useEffect(() => {
-    if (!open || !viewId) return;
-    const filtersPayload = buildServerFilters();
-    const payloadKey = JSON.stringify(filtersPayload);
+    if (!viewId) return;
+    if (isTyping) return; // wait until finished typing
+
+    const all = buildServerFilters();
+
+    // Keep only complete conditions (value present when required)
+    const complete = all.filter((f) => {
+      if (f.op === "isEmpty" || f.op === "isNotEmpty") return true;
+      if (f.value === undefined) return false;
+      if (typeof f.value === "number") return true;
+      return String(f.value).trim() !== "";
+    });
+
+    // If user cleared all filters, that's valid — we should send []
+    const payloadKey = JSON.stringify(complete);
     if (payloadKey === lastSentRef.current) return;
 
     const t = window.setTimeout(() => {
       lastSentRef.current = payloadKey;
-      updateView.mutate({ viewId, filters: filtersPayload });
-    }, 250);
+      updateView.mutate({ viewId, filters: complete });
+    }, 150); // small debounce to batch quick ops changes
 
     return () => window.clearTimeout(t);
-  }, [open, viewId, buildServerFilters, updateView]);
+  }, [isTyping, buildServerFilters, viewId, updateView]);
 
   if (!open) return null;
 
@@ -449,7 +469,7 @@ export default function FilterMenuPopover({
         aria-modal="true"
         data-menulayer="true"
         style={{ position: strategy, top: y ?? 0, left: x ?? 0, width }}
-        className="rounded-md border border-gray-200 bg-white shadow-lg z-[1000]"
+        className="rounded-md border border-gray-200 bg-white shadow-lg z:[1000]"
       >
         {/* Top bar */}
         <div className="h-[30px] px-4 pt-3 text-[13px] text-[#616670]">
@@ -474,6 +494,8 @@ export default function FilterMenuPopover({
                   FIELD_MENU_W={FIELD_MENU_W}
                   OP_MENU_W={OP_MENU_W}
                   LOGIC_MENU_W={LOGIC_MENU_W}
+                  onStartTyping={() => setIsTyping(true)} 
+                  onStopTyping={() => setIsTyping(false)}   
                 />
               ))}
             </div>
