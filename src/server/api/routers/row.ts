@@ -63,26 +63,12 @@ export const rowRouter = createTRPCRouter({
       const filters: ViewFilter[] = parseFilters(view?.filters);
       const sorts: ViewSort[] = parseSorts(view?.sorts);
 
-      const rawSearch = (view as { search?: unknown } | null)?.search;
-      const search: string | null = typeof rawSearch === "string" ? rawSearch : null;
-
       // Read logic safely, default to "and"
       const logicRaw = (view as { filtersLogic?: unknown } | null)?.filtersLogic;
       const filtersLogic: "and" | "or" = logicRaw === "or" ? "or" : "and";
 
       // Base WHERE parts
       const where: Prisma.Sql[] = [Prisma.sql`r."tableId" = ${input.tableId}`];
-
-      if (search && search.trim() !== "") {
-        const like = `%${search}%`;
-        where.push(Prisma.sql`
-          EXISTS (
-            SELECT 1 FROM "Cell" c
-            WHERE c."rowId" = r.id
-              AND (c."textValue" ILIKE ${like} OR c."numberValue"::text ILIKE ${like})
-          )
-        `);
-      }
 
       // Build filter expressions separately, each wrapped in parentheses
       const filterExprs: Prisma.Sql[] = [];

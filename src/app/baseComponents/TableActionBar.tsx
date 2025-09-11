@@ -11,6 +11,7 @@ import FilterMenuPopover from "./grid/FilterMenuPopover";
 import SortMenuPopover from "./grid/SortMenuPopover";
 import RowHeightMenu from "./grid/RowHeightMenu";
 import HideFieldsPopover from "./grid/HideFieldsPopover";
+import SearchPopover from "./grid/SearchPopover";
 import { useViews } from "./ViewsLayout";
 
 import { api } from "~/trpc/react";
@@ -70,7 +71,7 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
       extra,
     ].join(" ");
 
-  ////////////////////// HIDE MENU /////////////////////////////////////////////
+  ////////////////////// HIDE MENU + STATE /////////////////////////////////////
   const [hideOpen, setHideOpen] = useState(false);
   const hideBtnRef = useRef<HTMLButtonElement | null>(null);
 
@@ -94,6 +95,9 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
     { label: "Tall",      value: ROW_H_TALL },
     { label: "Extra Tall",value: ROW_H_XT },
   ];
+  ////////////////////// SEARCH POPOVER + STATE ////////////////////////////////
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchBtnRef = useRef<HTMLButtonElement | null>(null);
 
   ////////////////////// COLUMN RESIZING + PERSISTENCE /////////////////////////
   const saveWidth = api.column.setWidth.useMutation();
@@ -290,12 +294,26 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
               {!compact && <span className="text-[13px]">Share and sync</span>}
             </button>
 
-            <div
-              className="h-8 ml-1 flex items-center gap-2 rounded-sm px-2 hover:bg-gray-50 focus-within:ring-2 focus-within:ring-indigo-500 cursor-pointer"
+            <button
+              ref={searchBtnRef}
+              className={topBtnClass()}
               title="Search"
+              aria-label="Search"
+              onClick={() => setSearchOpen((v) => !v)}
+              aria-haspopup="dialog"
+              aria-expanded={searchOpen}
             >
               <SearchRoundedIcon fontSize="small" className="text-gray-600" />
-            </div>
+              {!compact && <span className="text-[13px]">Search</span>}
+            </button>
+
+            <SearchPopover
+              open={searchOpen}
+              onClose={() => setSearchOpen(false)}
+              anchorEl={searchBtnRef.current}
+              tableId={tableId}
+              viewId={activeViewId}
+            />
           </div>
         </div>
       </div>

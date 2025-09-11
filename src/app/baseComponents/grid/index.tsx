@@ -32,12 +32,22 @@ export default function BaseGrid({ tableId, viewId }: { tableId: string; viewId:
       : [];
   }, [viewsQ.data, viewId]);
 
+  const searchTerm = useMemo(() => {
+    const list = viewsQ.data ?? [];
+    const active =
+      (viewId && list.find(v => v.id === viewId)) ??
+      list.find(v => v.name === "Grid view") ??
+      list[0];
+    const raw = (active as { search?: unknown } | undefined)?.search;
+    return typeof raw === "string" ? raw : "";
+  }, [viewsQ.data, viewId]);
+
   const rowNumCol = useRowNumberColumn();
   const dynamicCols = useDynamicColumns({
     columnsData: columnsQ.data
       ?.filter(c => !hiddenIds.includes(c.id))             
       .map(c => ({ id: c.id, name: c.name, type: c.type, width: c.width })),
-    editingKey, setEditingKey, updateCell, tableId,
+    editingKey, setEditingKey, updateCell, tableId, searchTerm
   });
 
   // view-switch–aware loading
