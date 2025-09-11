@@ -10,6 +10,7 @@ import {
   InlineMenu,
   ITEM_CLASS,
 } from "./uiPopover";
+import { api } from "~/trpc/react";
 import HelpOutlineOutlinedIcon from "@mui/icons-material/HelpOutlineOutlined";
 import AddIcon from "@mui/icons-material/Add";
 import CloseIcon from "@mui/icons-material/Close";
@@ -17,20 +18,25 @@ import DragIndicatorOutlinedIcon from "@mui/icons-material/DragIndicatorOutlined
 import type { Placement } from "@floating-ui/react";
 
 type ColumnLite = { id: string; name: string; type: "TEXT" | "NUMBER" };
-type Dir = "ASC" | "DESC";
-type SortRow = { id: string; fieldId: string; dir: Dir };
+type DirUI = "ASC" | "DESC";
+type SortRow = { id: string; fieldId: string; dir: DirUI };
 
 export default function SortMenuPopover({
   open,
   onClose,
   anchorEl,
   columns,
+  tableId,
+  viewId, // <-- new
 }: {
   open: boolean;
   onClose: () => void;
   anchorEl: HTMLElement | null;
   columns: ColumnLite[];
+  tableId: string;
+  viewId: string | null;
 }) {
+  const utils = api.useUtils();
   const panelRef = useRef<HTMLDivElement | null>(null);
 
   const { x, y, strategy, refs } = useFloatingForAnchor(
@@ -43,8 +49,71 @@ export default function SortMenuPopover({
 
   // ---------- state ----------
   const [rows, setRows] = useState<SortRow[]>([]);
-  const mode: "pick" | "configure" = rows.length ? "configure" : "pick";
   const [autoSort, setAutoSort] = useState(true);
+  const mode: "pick" | "configure" = rows.length ? "configure" : "pick";
+
+  // Load current sorts for this view
+  const viewQ = api.view.get.useQuery(
+    { viewId: viewId ?? "" },
+    { enabled: open && !!viewId }
+  );
+
+  // Initialize rows whenever we open for a (new) view
+  useEffect(() => {
+    if (!open || !viewQ.data) return;
+    const current = Array.isArray(viewQ.data.sorts) ? viewQ.data.sorts : [];
+    setRows(
+      current.map((s: any) => ({
+        id: crypto.randomUUID(),
+        fieldId: s.columnId as string,
+        dir: (s.dir ?? "asc").toString().toUpperCase() as DirUI,
+      }))
+    );
+  }, [open, viewQ.data]);
+
+  // Helpers
+  const fieldById = (id: string | undefined) => columns.find((c) => c.id === id);
+  const labelForDir = (t: ColumnLite["type"], d: DirUI) =>
+    t === "NUMBER" ? (d === "ASC" ? "1 → 9" : "9 → 1") : d === "ASC" ? "A → Z" : "Z → A";
+
+  const rowsToPayload = () =>
+    rows.map((r) => {
+      const col = fieldById(r.fieldId)!;
+      return {
+        columnId: r.fieldId,
+        type: col.type,
+        dir: r.dir.toLowerCase() as "asc" | "desc",
+      };
+    });
+
+
+  const updateConfig = api.view.updateConfig.useMutation({
+    onSuccess: () => {
+      if (!viewId) return;
+      // refresh rows
+      void utils.row.list.invalidate({ tableId, viewId, skip: 0, take: 200 });
+
+      const payload = rowsToPayload();
+
+      // keep single-view cache in sync (already present)
+      utils.view.get.setData({ viewId }, (old) =>
+        old ? { ...old, sorts: payload } : old
+      );
+      // also keep list cache in sync (Filter menu hydrates from list in your code)
+      utils.view.listByTable.setData({ tableId }, (old) =>
+        old?.map((v) => (v.id === viewId ? { ...v, sorts: payload } : v))
+      );
+    },
+  });
+
+  // Auto-save (debounced) when autoSort is ON
+  useEffect(() => {
+    if (!open || !autoSort || !viewId) return;
+    const t = setTimeout(() => {
+      updateConfig.mutate({ viewId, sorts: rowsToPayload() });
+    }, 200);
+    return () => clearTimeout(t);
+  }, [rows, autoSort, open, viewId]);
 
   // Single open inline submenu across all rows
   const [openSubmenu, setOpenSubmenu] =
@@ -70,11 +139,6 @@ export default function SortMenuPopover({
   if (!open || !anchorEl) return null;
 
   const WIDTH = mode === "pick" ? 320 : 480;
-
-  const labelForDir = (t: ColumnLite["type"], d: Dir) =>
-    t === "NUMBER" ? (d === "ASC" ? "1 → 9" : "9 → 1") : d === "ASC" ? "A → Z" : "Z → A";
-
-  const fieldById = (id: string | undefined) => columns.find((c) => c.id === id);
 
   return (
     <Portal>
@@ -121,7 +185,7 @@ export default function SortMenuPopover({
           ) : (
             <div className="pt-1">
               <div className="flex flex-col gap-2">
-                {rows.map((r) => {
+                {rows.map((r, idx) => {
                   const col = fieldById(r.fieldId)!;
                   const used = new Set(rows.map((rr) => rr.fieldId));
                   const available = columns.filter(
@@ -193,7 +257,7 @@ export default function SortMenuPopover({
                             submenuTrigger
                           />
                           <InlineMenu open={dirOpen} width={160}>
-                            {(["ASC", "DESC"] as Dir[]).map((d) => (
+                            {(["ASC", "DESC"] as DirUI[]).map((d) => (
                               <button
                                 key={d}
                                 type="button"
@@ -215,7 +279,7 @@ export default function SortMenuPopover({
 
                         <div className="flex-1" />
 
-                        {/* Remove + Drag (no borders) */}
+                        {/* Remove + Drag (visual only) */}
                         <button
                           type="button"
                           className="w-8 h-8 flex items-center justify-center hover:bg-gray-100 rounded-sm"
@@ -231,6 +295,36 @@ export default function SortMenuPopover({
                         >
                           <DragIndicatorOutlinedIcon fontSize="small" className="text-gray-400" />
                         </span>
+                      </div>
+
+                      {/* simple move up/down controls (so i dont have to do drag) */}
+                      <div className="pl-1 text-xs text-gray-400">
+                        <button
+                          className="mr-2 hover:text-gray-700"
+                          onClick={() =>
+                            setRows((prev) => {
+                              if (idx === 0) return prev;
+                              const next = [...prev];
+                              [next[idx - 1], next[idx]] = [next[idx] as SortRow, next[idx - 1] as SortRow];
+                              return next;
+                            })
+                          }
+                        >
+                          Move up
+                        </button>
+                        <button
+                          className="hover:text-gray-700"
+                          onClick={() =>
+                            setRows((prev) => {
+                              if (idx === prev.length - 1) return prev;
+                              const next = [...prev];
+                              [next[idx + 1], next[idx]] = [next[idx] as SortRow, next[idx + 1] as SortRow];
+                              return next;
+                            })
+                          }
+                        >
+                          Move down
+                        </button>
                       </div>
                     </div>
                   );
@@ -278,7 +372,11 @@ export default function SortMenuPopover({
                       <button
                         type="button"
                         className="h-8 px-3 rounded-sm text-sm text-white bg-blue-600 hover:bg-blue-700"
-                        onClick={onClose}
+                        onClick={() => {
+                          if (!viewId) return;
+                          updateConfig.mutate({ viewId, sorts: rowsToPayload() });
+                          onClose();
+                        }}
                       >
                         Sort
                       </button>
