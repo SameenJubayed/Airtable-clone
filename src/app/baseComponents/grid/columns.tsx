@@ -19,6 +19,19 @@ type MakeColsArgs = {
   tableId?: string;
 };
 
+const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+
+function focusCellByIndex(rowIndex: number, colIndex: number) {
+  const el = document.querySelector<HTMLElement>(
+    `[data-cell="1"][data-rowindex="${rowIndex}"][data-colindex="${colIndex}"]`
+  );
+  if (el) {
+    el.focus();
+    // ensure visibility within the scrollport
+    el.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+}
+
 export function useRowNumberColumn(): ColumnDef<CellRecord, unknown> {
   return useMemo<ColumnDef<CellRecord, unknown>>(
     () => ({
@@ -183,52 +196,65 @@ export function useDynamicColumns({
         const ek = editingKey;
         const isEditing = ek?.rowId === rowId && ek?.columnId === columnId;
 
-        // Helpers: decide if a key should trigger "type-to-edit" and what to prefill
+        const rowIndex = ctx.row.index;
+        const colIndex = ctx.column.getIndex();
+
+        const move = (dx: number, dy: number) => {
+          const colCount = ctx.table.getVisibleLeafColumns().length;
+          const rowCount = ctx.table.getRowModel().rows.length;
+          const nextCol = clamp(colIndex + dx, 0, colCount - 1);
+          const nextRow = clamp(rowIndex + dy, 0, rowCount - 1);
+          if (nextCol !== colIndex || nextRow !== rowIndex) {
+            focusCellByIndex(nextRow, nextCol);
+          }
+        };
+
+        // ----- type-to-edit helpers (same behavior you asked for) -----
         const allowNumeric = col.type === "NUMBER";
         const prefillFromKey = (e: React.KeyboardEvent<HTMLDivElement>): string | null => {
-          if (e.ctrlKey || e.metaKey || e.altKey) return null; // ignore combos
-          if (e.key === "Backspace" || e.key === "Delete") return ""; // clear cell
-          if (e.key.length !== 1) return null; // only printable single-char keys
+          if (e.ctrlKey || e.metaKey || e.altKey) return null;
+          if (e.key === "Backspace" || e.key === "Delete") return "";
+          if (e.key.length !== 1) return null;
 
-          // Printable char
           const ch = e.key;
           if (!allowNumeric) return ch;
 
-          // NUMBER: allow digits, decimal point, and leading minus
           const isDigit = ch >= "0" && ch <= "9";
-          if (isDigit) return ch;
-          if (ch === ".") return ch;
-          if (ch === "-") return ch;
+          if (isDigit || ch === "." || ch === "-") return ch;
           return null;
         };
 
         if (!isEditing) {
           return (
             <div
+              data-cell="1"
+              data-rowindex={rowIndex}
+              data-colindex={colIndex}
               role="gridcell"
               tabIndex={0}
-              className={[
-                "w-full h-8 px-3 flex items-center whitespace-nowrap overflow-hidden text-ellipsis",
-                // visual selected state when focused
-                "focus:outline-none focus:ring-2 focus:ring-indigo-500/50",
-                "cursor-default",
-              ].join(" ")}
+              className="w-full h-8 px-3 flex items-center whitespace-nowrap overflow-hidden text-ellipsis
+                        focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-default"
               title={value == null ? "" : String(value)}
-              onClick={(e) => {
-                // single click selects (focus) but does not edit
-                (e.currentTarget as HTMLDivElement).focus();
-              }}
-              onDoubleClick={() => {
-                // double click: edit with current value
-                setEditingKey({ rowId, columnId });
-              }}
+              onClick={(e) => (e.currentTarget as HTMLDivElement).focus()} // single-click selects
+              onDoubleClick={() => setEditingKey({ rowId, columnId })} // double-click edits
               onKeyDown={(e) => {
+                // type to edit (replace content)
                 const prefill = prefillFromKey(e);
-                if (prefill == null) return;
+                if (prefill != null) {
+                  e.preventDefault();
+                  setEditingKey({ rowId, columnId, prefill });
+                  return;
+                }
 
-                // enter edit mode with replacement content
-                e.preventDefault();
-                setEditingKey({ rowId, columnId, prefill });
+                // navigation
+                if (e.key === "ArrowRight") { e.preventDefault(); move(1, 0); }
+                else if (e.key === "ArrowLeft") { e.preventDefault(); move(-1, 0); }
+                else if (e.key === "ArrowDown") { e.preventDefault(); move(0, 1); }
+                else if (e.key === "ArrowUp") { e.preventDefault(); move(0, -1); }
+                else if (e.key === "Tab") {
+                  e.preventDefault();
+                  move(e.shiftKey ? -1 : 1, 0); // keep Tab within the row
+                }
               }}
             >
               {value ?? ""}
@@ -236,7 +262,7 @@ export function useDynamicColumns({
           );
         }
 
-        // When editing, if we arrived here via type-to-edit, seed the input with that text
+        // In edit mode: keep your existing input behavior
         const initial = ek?.prefill ?? (value == null ? "" : String(value));
 
         const type = col.type;
@@ -245,7 +271,6 @@ export function useDynamicColumns({
           <input
             autoFocus
             type={type === "NUMBER" ? "number" : "text"}
-            // Use prefill (if any) so typing replaces existing value
             defaultValue={initial}
             className="
               absolute inset-0 block w-full h-full box-border 
@@ -259,7 +284,6 @@ export function useDynamicColumns({
               setEditingKey(null);
 
               if (type === "NUMBER") {
-                // Accept empty = null; reject NaN
                 const num = raw === "" ? null : Number(raw);
                 updateCell.mutate({
                   rowId,
@@ -267,7 +291,7 @@ export function useDynamicColumns({
                   numberValue: Number.isNaN(num) ? null : num,
                 });
               } else {
-                const txt = raw; 
+                const txt = raw; // keep spaces; user is replacing intentionally
                 updateCell.mutate({
                   rowId,
                   columnId,
@@ -276,6 +300,7 @@ export function useDynamicColumns({
               }
             }}
             onKeyDown={(e) => {
+              // keep your current commit/cancel
               if (e.key === "Enter" || e.key === "Escape") {
                 (e.target as HTMLInputElement).blur();
               }
