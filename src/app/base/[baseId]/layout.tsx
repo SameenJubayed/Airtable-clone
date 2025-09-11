@@ -11,19 +11,17 @@ export default async function BaseLayout({
   children: ReactNode;
   params: Promise<{ baseId: string }>;
 }) {
-  const { baseId } = await params; 
+  const { baseId } = await params;
   const base = await api.base.get({ baseId });
 
   return (
-    <div className="min-h-screen bg-[#f6f7f9] text-gray-900">
-      {/* Rail owns the extreme top-left corner */}
-      <BaseSidebar baseId={base.id} />
+    // Own the viewport and prevent body scrolling
+    <div className="h-screen overflow-hidden bg-[#f6f7f9] text-gray-900">
+      <BaseSidebar baseId={base.id} />   {/* fixed 56px wide */}
+      <BaseHeader baseId={base.id} initialName={base.name} /> {/* fixed 56px tall */}
 
-      {/* Header sits underneath the rail at the left (padding-left prevents overlap) */}
-      <BaseHeader baseId={base.id} initialName={base.name} />
-
-      {/* Content: account for both header (top) and rail (left) */}
-      <main className="pt-14 pl-14 h-[100vh]">
+      {/* Offset for header+rail*/}
+      <main className="pl-14 pt-14 h-[100vh] min-h-0 overflow-hidden">
         {children}
       </main>
     </div>

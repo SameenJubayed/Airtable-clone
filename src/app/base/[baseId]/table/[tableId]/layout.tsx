@@ -14,16 +14,15 @@ export default async function TableLayout({
   const { baseId, tableId } = await params;
 
   return (
-    <div className="h-full bg-[#f6f7f9] text-gray-900 flex flex-col overflow-hidden">
+    // Fills the height provided by BaseLayout <main>
+    <div className="h-full min-h-0 flex flex-col overflow-hidden bg-[#f6f7f9] text-gray-900">
       <div className="shrink-0">
         <TableTabs baseId={baseId} activeTableId={tableId} />
       </div>
 
       <ViewsLayout tableId={tableId}>
-        {/* child[0] → action bar (controls sidebar) */}
         <TableActionBar tableId={tableId} />
-        {/* child[1] → the scrolling region */}
-        <main className="min-h-0 flex-1 overflow-auto">
+        <main className="flex-1 min-h-0 overflow-auto">
           {children}
         </main>
       </ViewsLayout>
