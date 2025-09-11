@@ -138,7 +138,7 @@ function HeaderWithMenu({tableId, col, position}: {
               tableId,
               name,
               type,
-              position: pos, // we passed it in initial above
+              position: pos, 
             });
           }}
         />
@@ -179,27 +179,74 @@ export function useDynamicColumns({
         const rowId = ctx.row.original.rowId;
         const columnId = col.id;
         const value = ctx.getValue() as string | number | null | undefined;
-        // boolean, check if cell is being edited
-        const isEditing = editingKey?.rowId === rowId && editingKey?.columnId === columnId;
+
+        const ek = editingKey;
+        const isEditing = ek?.rowId === rowId && ek?.columnId === columnId;
+
+        // Helpers: decide if a key should trigger "type-to-edit" and what to prefill
+        const allowNumeric = col.type === "NUMBER";
+        const prefillFromKey = (e: React.KeyboardEvent<HTMLDivElement>): string | null => {
+          if (e.ctrlKey || e.metaKey || e.altKey) return null; // ignore combos
+          if (e.key === "Backspace" || e.key === "Delete") return ""; // clear cell
+          if (e.key.length !== 1) return null; // only printable single-char keys
+
+          // Printable char
+          const ch = e.key;
+          if (!allowNumeric) return ch;
+
+          // NUMBER: allow digits, decimal point, and leading minus
+          const isDigit = ch >= "0" && ch <= "9";
+          if (isDigit) return ch;
+          if (ch === ".") return ch;
+          if (ch === "-") return ch;
+          return null;
+        };
 
         if (!isEditing) {
           return (
             <div
-              className="w-full h-8 px-3 flex items-center whitespace-nowrap overflow-hidden text-ellipsis"
-              onDoubleClick={() => setEditingKey({ rowId, columnId })}
+              role="gridcell"
+              tabIndex={0}
+              className={[
+                "w-full h-8 px-3 flex items-center whitespace-nowrap overflow-hidden text-ellipsis",
+                // visual selected state when focused
+                "focus:outline-none focus:ring-2 focus:ring-indigo-500/50",
+                "cursor-default",
+              ].join(" ")}
               title={value == null ? "" : String(value)}
+              onClick={(e) => {
+                // single click selects (focus) but does not edit
+                (e.currentTarget as HTMLDivElement).focus();
+              }}
+              onDoubleClick={() => {
+                // double click: edit with current value
+                setEditingKey({ rowId, columnId });
+              }}
+              onKeyDown={(e) => {
+                const prefill = prefillFromKey(e);
+                if (prefill == null) return;
+
+                // enter edit mode with replacement content
+                e.preventDefault();
+                setEditingKey({ rowId, columnId, prefill });
+              }}
             >
               {value ?? ""}
             </div>
           );
         }
 
+        // When editing, if we arrived here via type-to-edit, seed the input with that text
+        const initial = ek?.prefill ?? (value == null ? "" : String(value));
+
         const type = col.type;
+
         return (
           <input
             autoFocus
             type={type === "NUMBER" ? "number" : "text"}
-            defaultValue={value === null || value === undefined ? "" : String(value)}
+            // Use prefill (if any) so typing replaces existing value
+            defaultValue={initial}
             className="
               absolute inset-0 block w-full h-full box-border 
               px-3 
@@ -210,7 +257,9 @@ export function useDynamicColumns({
             onBlur={(e) => {
               const raw = e.currentTarget.value;
               setEditingKey(null);
+
               if (type === "NUMBER") {
+                // Accept empty = null; reject NaN
                 const num = raw === "" ? null : Number(raw);
                 updateCell.mutate({
                   rowId,
@@ -218,7 +267,7 @@ export function useDynamicColumns({
                   numberValue: Number.isNaN(num) ? null : num,
                 });
               } else {
-                const txt = raw.trim();
+                const txt = raw; 
                 updateCell.mutate({
                   rowId,
                   columnId,

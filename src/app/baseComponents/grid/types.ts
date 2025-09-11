@@ -5,7 +5,7 @@ export type CellRecord = {
   [columnId: string]: unknown;
 };
 
-export type EditingKey = { rowId: string; columnId: string } | null;
+export type EditingKey = { rowId: string; columnId: string; prefill?: string } | null;
 
 export type ColMeta = {
   tdClassName?: string;  // extra classes for <td>

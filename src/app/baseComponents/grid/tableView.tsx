@@ -114,13 +114,12 @@ export default function TableView({
 }: Props) {  
   const { insertAtEnd, insertAbove, insertBelow } = useOptimisticInsertRow(tableId, viewId);
   const { deleteByIndex } = useOptimisticDeleteRow(tableId, viewId); 
-  const { rowHeight } = useRowHeight(tableId);
 
   // right-click menu state
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [menuRowIndex, setMenuRowIndex] = useState<number | null>(null);
-
+  const { rowHeight } = useRowHeight(tableId);
 
   // column resizing control innit brev cmon now 
   const handleColumnSizingChange = useCallback(
@@ -155,7 +154,7 @@ export default function TableView({
 
   // compute widths once per render from TanStack
   const leafCols = table.getVisibleLeafColumns();
-  const dataWidth = useMemo(
+  const totalWidth = useMemo(
     () => leafCols.reduce((sum, col) => sum + col.getSize(), 0),
     [leafCols]
   );
@@ -164,7 +163,7 @@ export default function TableView({
     <div className="overflow-auto">
       <table 
         className="border-collapse table-fixed inline-table" 
-        style={{ width: dataWidth}}
+        style={{ width: totalWidth }}
       >
         {/* Set column widths */}
         <colgroup>
