@@ -17,7 +17,7 @@ type MakeColsArgs = {
   setEditingKey: (k: EditingKey) => void;
   updateCell: ReturnType<typeof api.row.updateCell.useMutation>;
   tableId?: string;
-  searchTerm?: string;
+  matchSet?: Set<string>;
 };
 
 export function useRowNumberColumn(): ColumnDef<CellRecord, unknown> {
@@ -154,7 +154,7 @@ export function useDynamicColumns({
   setEditingKey,
   updateCell,
   tableId = "",
-  searchTerm = ""
+  matchSet,
 }: MakeColsArgs) {
   return useMemo<ColumnDef<CellRecord, unknown>[]>(() => {
     if (!columnsData) return [];
@@ -177,21 +177,17 @@ export function useDynamicColumns({
         ? { tdClassName: "border-l-0", thClassName: "border-l-0" }
         : {}) as ColMeta,
 
-      cell: (ctx) => {
-        const containsCI = (hay: string, needle: string) =>
-          needle.trim() !== "" && hay.toLowerCase().includes(needle.toLowerCase());
-        
+      cell: (ctx) => {        
         const rowId = ctx.row.original.rowId;
         const columnId = col.id;
         const value = ctx.getValue() as string | number | null | undefined;
-
         const ek = editingKey;
         const isEditing = ek?.rowId === rowId && ek?.columnId === columnId;
 
         if (!isEditing) {
           const text = value == null ? "" : String(value);
-          const isMatch = containsCI(text, searchTerm ?? "");
-
+          const isMatch = matchSet?.has(`${rowId}|${columnId}`) ?? false;
+          
           const rowIndex = ctx.row.index;
           const colIndex = ctx.column.getIndex();
 
@@ -293,6 +289,6 @@ export function useDynamicColumns({
         );
       },
     }));
-  }, [columnsData, editingKey, setEditingKey, updateCell, tableId, searchTerm]);
+  }, [columnsData, editingKey, setEditingKey, updateCell, tableId, matchSet]);
 }
 

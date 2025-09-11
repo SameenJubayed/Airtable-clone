@@ -18,8 +18,24 @@ export default function BaseGrid({ tableId, viewId }: { tableId: string; viewId:
   const { editingKey, setEditingKey } = useEditingKey();
   const updateCell = useOptimisticUpdateCell(tableId, viewId ?? undefined);
 
-  const viewsQ = api.view.listByTable.useQuery({ tableId });
+  const { searchQ, switchingViewId, setSwitchingViewId } = useViews();
+  const rowIds = useMemo(
+    () => data.map((r) => r.rowId),
+    [data]
+  );
 
+  // Ask server for matches only when we have a query and rows loaded
+  const matchesQ = api.row.searchMatches.useQuery(
+    { tableId, q: searchQ, rowIds },
+    { enabled: !!searchQ.trim() && rowIds.length > 0 }
+  );
+  const matchSet = useMemo(() => {
+    const hits = matchesQ.data?.matches ?? [];
+    return new Set(hits.map((m) => `${m.rowId}|${m.columnId}`));
+  }, [matchesQ.data?.matches]);
+
+  // hidden columns from view
+  const viewsQ = api.view.listByTable.useQuery({ tableId });
   const hiddenIds = useMemo<string[]>(() => {
     const list = viewsQ.data ?? [];
     const active =
@@ -32,26 +48,15 @@ export default function BaseGrid({ tableId, viewId }: { tableId: string; viewId:
       : [];
   }, [viewsQ.data, viewId]);
 
-  const searchTerm = useMemo(() => {
-    const list = viewsQ.data ?? [];
-    const active =
-      (viewId && list.find(v => v.id === viewId)) ??
-      list.find(v => v.name === "Grid view") ??
-      list[0];
-    const raw = (active as { search?: unknown } | undefined)?.search;
-    return typeof raw === "string" ? raw : "";
-  }, [viewsQ.data, viewId]);
-
   const rowNumCol = useRowNumberColumn();
   const dynamicCols = useDynamicColumns({
     columnsData: columnsQ.data
       ?.filter(c => !hiddenIds.includes(c.id))             
       .map(c => ({ id: c.id, name: c.name, type: c.type, width: c.width })),
-    editingKey, setEditingKey, updateCell, tableId, searchTerm
+    editingKey, setEditingKey, updateCell, tableId, matchSet
   });
 
   // view-switch–aware loading
-  const { switchingViewId, setSwitchingViewId } = useViews();
   const switching = switchingViewId != null && switchingViewId === (viewId ?? null);
 
   // Show loader only when:

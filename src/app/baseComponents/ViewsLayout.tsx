@@ -9,6 +9,8 @@ type ViewsCtxType = {
   setOpen: (v: boolean) => void;
   switchingViewId: string | null;
   setSwitchingViewId: (v: string | null) => void;
+  searchQ: string;                            
+  setSearchQ: (v: string) => void;
 };
 
 const ViewsCtx = createContext<ViewsCtxType | null>(null);
@@ -20,11 +22,12 @@ export default function ViewsLayout({
 }: { tableId: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [switchingViewId, setSwitchingViewId] = useState<string | null>(null);
+  const [searchQ, setSearchQ] = useState("");
 
   const railW = 280;
 
   return (
-    <ViewsCtx.Provider value={{ open, setOpen, switchingViewId, setSwitchingViewId }}>
+    <ViewsCtx.Provider value={{ open, setOpen, switchingViewId, setSwitchingViewId, searchQ, setSearchQ }}>
       <div className="flex h-full min-h-0 flex-col overflow-hidden">
         {/* Top bar (action bar) */}
         <div className="shrink-0">

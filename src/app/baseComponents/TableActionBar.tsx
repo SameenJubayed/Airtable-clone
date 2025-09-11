@@ -311,8 +311,6 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
               open={searchOpen}
               onClose={() => setSearchOpen(false)}
               anchorEl={searchBtnRef.current}
-              tableId={tableId}
-              viewId={activeViewId}
             />
           </div>
         </div>

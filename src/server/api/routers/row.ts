@@ -216,7 +216,43 @@ export const rowRouter = createTRPCRouter({
         WHERE "rowId" IN (${rowIdsSql})
       `);
 
-      return { rows, cells };
+      return { rows, cells};
+    }),
+  
+  searchMatches: protectedProcedure
+    .input(
+      z.object({
+        tableId: z.string().cuid(),
+        q: z.string().trim().min(1),
+        rowIds: z.array(z.string().cuid()).min(1),
+      })
+    )
+    .query(async ({ input, ctx }) => {
+      // ownership check
+      await ctx.db.table.findFirstOrThrow({
+        where: { id: input.tableId, base: { createdById: ctx.session.user.id } },
+        select: { id: true },
+      });
+
+      const like = `%${input.q}%`;
+      const rowIdsSql = Prisma.join(input.rowIds.map((id) => Prisma.sql`${id}`));
+
+      // constrain by table to avoid cross-table leakage
+      const matches = await ctx.db.$queryRaw<
+        { rowId: string; columnId: string }[]
+      >(Prisma.sql`
+        SELECT c."rowId", c."columnId"
+        FROM "Cell" c
+        JOIN "Row" r ON r.id = c."rowId"
+        WHERE r."tableId" = ${input.tableId}
+          AND r.id IN (${rowIdsSql})
+          AND (
+            c."textValue" ILIKE ${like}
+            OR (c."numberValue"::text) ILIKE ${like}
+          )
+      `);
+
+      return { matches };
     }),
 
   /**
