@@ -68,9 +68,9 @@ export default function ColumnHeaderMenu({
     placement: "bottom-start",
     strategy: "fixed",
     middleware: [
-      offset(1),          // small gap below the header cell
-      flip(),             // flip if not enough room
-      shift({ padding: 8 }) // keep within viewport
+      offset(1),          
+      flip(),       
+      shift({ padding: 8 }) 
     ],
   });
 
@@ -152,19 +152,19 @@ export default function ColumnHeaderMenu({
       >
         <Item icon={<EditOutlinedIcon fontSize="small" />} label="Edit field" onClick={onEdit} />
         <Divider />
-        <Item icon={<ContentCopyOutlinedIcon fontSize="small" />} label="Duplicate field" onClick={onDuplicate} />
+        {/* <Item icon={<ContentCopyOutlinedIcon fontSize="small" />} label="Duplicate field" onClick={onDuplicate} /> */}
         <Item icon={<ArrowBackIcon fontSize="small" />} label="Insert left" onClick={onInsertLeft} />
         <Item icon={<ArrowForwardIcon fontSize="small" />} label="Insert right" onClick={onInsertRight} />
         <Divider />
-        <Item icon={<SortByAlphaOutlinedIcon fontSize="small" />} label="Sort  A → Z" onClick={onSortAsc} />
+        {/* <Item icon={<SortByAlphaOutlinedIcon fontSize="small" />} label="Sort  A → Z" onClick={onSortAsc} />
         <Item
           icon={<SortByAlphaOutlinedIcon style={{ transform: "scaleX(-1)" }} fontSize="small" />}
           label="Sort  Z → A"
           onClick={onSortDesc}
         />
-        <Item icon={<FilterListOutlinedIcon fontSize="small" />} label="Filter by this field" onClick={onFilter} />
-        <Divider />
-        <Item icon={<VisibilityOffOutlinedIcon fontSize="small" />} label="Hide field" onClick={onHide} />
+        <Item icon={<FilterListOutlinedIcon fontSize="small" />} label="Filter by this field" onClick={onFilter} /> */}
+        {/* <Divider /> */}
+        {/* <Item icon={<VisibilityOffOutlinedIcon fontSize="small" />} label="Hide field" onClick={onHide} /> */}
         <Item
           icon={<DeleteOutlineOutlinedIcon fontSize="small" className="text-gray-700" />}
           label="Delete field"

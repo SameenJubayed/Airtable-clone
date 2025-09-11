@@ -10,11 +10,13 @@ import {
   useFloating,
   offset,
   flip,
+  shift,
   autoUpdate,
   type VirtualElement,
+  type Placement,
 } from "@floating-ui/react";
 
-// Optional helper to close on ESC / outside (same pattern you use elsewhere)
+// Reuse your existing outside-click helper
 import { useCloseOnOutside } from "./uiPopover";
 
 type FieldType = "TEXT" | "NUMBER";
@@ -34,8 +36,8 @@ export type FieldEditorPopoverProps = {
    * Horizontal alignment preference for the panel relative to the anchor:
    * - "leftEdge": panelLeft = anchor.left
    * - "rightEdge": panelRight = anchor.right
-   * - "leftAtRightEdge": panelLeft = anchor.right
-   * - "auto": bottom-start with flip/shift (good default)
+   * - "leftAtRightEdge": panelLeft = anchor.right (attach to the right edge)
+   * - "auto": bottom-start with flip/shift
    */
   align?: "leftEdge" | "rightEdge" | "leftAtRightEdge" | "auto";
 
@@ -63,9 +65,9 @@ export default function FieldEditorPopover({
   open,
   onClose,
   anchorEl,
-  anchorRect: rectProp,
+  anchorRect,
   align = "auto",
-  gap = 1,
+  gap = 8,
   mode,
   initial,
   labels,
@@ -79,26 +81,26 @@ export default function FieldEditorPopover({
   useEffect(() => {
     if (!open) return;
     setName(initial?.name ?? "");
-    setType((initial?.type) ?? "TEXT");
+    setType(initial?.type ?? "TEXT");
   }, [open, initial?.name, initial?.type]);
 
-  // --- server mutations
+  // server mutations (non optimistic)
   const rename = api.column.rename.useMutation();
   const changeType = api.column.changeType.useMutation();
 
+  // Map align → Floating UI placement
+  const placement: Placement =
+    align === "rightEdge" ? "bottom-end" : "bottom-start";
+
   // Build a VirtualElement when we get a DOMRect or when we need to
   // “fake” an anchor whose left is the original right edge.
-  const virtualRef: VirtualElement | null = useMemo(() => {
-    const srcRect =
-      rectProp ??
-      (anchorEl ? anchorEl.getBoundingClientRect() : null);
-
-    if (!srcRect) return null;
+  const reference: HTMLElement | VirtualElement | null = useMemo(() => {
+    const rect = anchorRect ?? anchorEl?.getBoundingClientRect() ?? null;
+    if (!rect) return anchorEl ?? null;
 
     if (align === "leftAtRightEdge") {
-      // Zero-width virtual anchor whose left = original right.
-      const r = srcRect;
-      const vRect = {
+      const r = rect;
+      const vRect: DOMRect = {
         x: r.right,
         y: r.top,
         width: 0,
@@ -107,52 +109,34 @@ export default function FieldEditorPopover({
         right: r.right,
         bottom: r.bottom,
         left: r.right,
-      } as DOMRect;
+        toJSON: () => ({}),
+      } as unknown as DOMRect;
       return { getBoundingClientRect: () => vRect };
     }
 
-    // Use the real rect as the reference
-    return { getBoundingClientRect: () => srcRect };
-  }, [anchorEl, rectProp, align]);
-
-  // Choose placement based on requested alignment
-  const placement =
-    align === "rightEdge"
-      ? "bottom-end"
-      : "bottom-start"; // covers leftEdge, leftAtRightEdge, and auto
-
-  const { x, y, strategy, refs, update } = useFloating({
-    placement,
-    strategy: "fixed",
-    middleware: [
-      offset(gap),
-      flip(),
-    ],
-  });
-
-  // Hook the anchor (HTMLElement or VirtualElement) and keep positioned
-  useEffect(() => {
-    if (!open) return;
-
-    if (virtualRef) {
-      refs.setReference(virtualRef);
-    } else if (anchorEl) {
-      refs.setReference(anchorEl);
-    } else {
-      return;
+    // If we were given a rect explicitly, stick to a virtual element for stability
+    if (anchorRect) {
+      const v: DOMRect = { ...anchorRect, toJSON: () => ({}) } as unknown as DOMRect;
+      return { getBoundingClientRect: () => v };
     }
 
-    const floatingEl = refs.floating.current;
-    if (!floatingEl) return;
+    // Default: use the real element
+    return anchorEl ?? null;
+  }, [anchorEl, anchorRect, align]);
 
-    return autoUpdate(
-      (virtualRef ?? anchorEl)!,
-      floatingEl,
-      update
-    );
-  }, [open, virtualRef, anchorEl, refs, update]);
+  const { x, y, strategy, refs } = useFloating({
+    placement,
+    strategy: "fixed",
+    middleware: [offset(gap), flip({ padding: 8 }), shift({ padding: 8 })],
+    whileElementsMounted: (ref, floating, update) => autoUpdate(ref, floating, update),
+  });
 
-  // Close on ESC / outside
+  useEffect(() => {
+    if (!open || !reference) return;
+    refs.setReference(reference);
+  }, [open, reference, refs]);
+
+  // Close on ESC / outside — treat the anchorEl as "inside" so clicking the button toggles correctly
   const panelRef = useRef<HTMLDivElement | null>(null);
   useCloseOnOutside(open, onClose, panelRef, anchorEl ?? undefined);
 
@@ -197,7 +181,7 @@ export default function FieldEditorPopover({
         role="dialog"
         aria-modal="true"
         style={{ position: strategy, top: y ?? 0, left: x ?? 0 }}
-        className="w-[280px] rounded-md border border-gray-200 bg-white shadow-lg p-3 z-[1001]"
+        className="w-[280px] rounded-md border border-gray-200 bg-white shadow-lg p-3 z-[1002]"
       >
         <div className="space-y-3">
           <div>

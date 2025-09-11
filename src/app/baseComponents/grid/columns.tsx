@@ -7,7 +7,7 @@ import type { CellRecord, EditingKey, ColMeta } from "./types";
 import { COL_W, MIN_COL_W, ROWNUM_W } from "./constants";
 import { useOptimisticAddColumn } from "./hooks";
 import ColumnHeaderMenu from "./ColumnHeaderMenu";
-import FieldPanel from "./FieldPanel";
+import FieldEditorPopover from "./FieldEditorPopover";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { api } from "~/trpc/react";
 
@@ -53,13 +53,20 @@ function HeaderWithMenu({tableId, col, position}: {
   const del = api.column.delete.useMutation();
 
   const addColumn = useOptimisticAddColumn(tableId, {
-    onOptimisticApplied: () => setPanel(null),
+    onOptimisticApplied: () => setEditor(null),
   });
 
   const ref = useRef<HTMLDivElement | null>(null);
   const [hover, setHover] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [panel, setPanel] = useState<null | { mode: "create" | "edit"; align: "leftEdge" | "rightEdge"; pos?: number }>(null);
+    const [editor, setEditor] = useState<
+    | null
+    | {
+        mode: "create" | "edit";
+        align: "leftEdge" | "leftAtRightEdge";
+        initial?: { columnId?: string; name?: string; type?: "TEXT" | "NUMBER"; position?: number };
+      }
+  >(null);
 
   const rect = ref.current?.getBoundingClientRect() ?? null;
 
@@ -99,9 +106,9 @@ function HeaderWithMenu({tableId, col, position}: {
         onClose={() => setMenuOpen(false)}
         anchorRect={rect}
         // column={{ ...col, position }}
-        onEdit={() => setPanel({ mode: "edit", align: "leftEdge" })}
-        onInsertLeft={() => setPanel({ mode: "create", align: "leftEdge", pos: position })}
-        onInsertRight={() => setPanel({ mode: "create", align: "rightEdge", pos: position + 1 })}
+        onEdit={() => setEditor({ mode: "edit", align: "leftEdge" })}
+        onInsertLeft={() => setEditor({ mode: "create", align: "leftEdge", initial: { position } })}
+        onInsertRight={() => setEditor({ mode: "create", align: "leftAtRightEdge", initial: { position: position + 1 } })}
         onDelete={async () => {
           await del.mutateAsync({ columnId: col.id });
           await utils.column.listByTable.invalidate({ tableId });
@@ -115,25 +122,23 @@ function HeaderWithMenu({tableId, col, position}: {
         onHide={undefined}
       />
 
-      {panel && (
-        <FieldPanel
+      {editor && (
+        <FieldEditorPopover
           tableId={tableId}
           open
-          onClose={() => setPanel(null)}
-          anchorRect={rect}
-          align={panel.align}
-          mode={panel.mode}
-          initial={
-            panel.mode === "edit"
-              ? { columnId: col.id, name: col.name, type: col.type, position }
-              : { position: panel.pos }
-          }
+          onClose={() => setEditor(null)}
+          anchorEl={ref.current} // ⟵ anchor to real element (autoUpdate will follow)
+          align={editor.align}                 
+          mode={editor.mode}
+          initial={editor.initial}
+          labels={editor.mode === "edit" ? { btnSave: "Save" } : { btnCreate: "Create field" }}
           onCreate={({ name, type, position: pos }) => {
+            // only called in create mode
             addColumn.mutate({
               tableId,
               name,
               type,
-              position: pos, // left = position, right = position+1 passed in initial
+              position: pos, // we passed it in initial above
             });
           }}
         />
