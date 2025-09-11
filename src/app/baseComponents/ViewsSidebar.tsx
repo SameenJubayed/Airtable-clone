@@ -34,7 +34,7 @@ export default function ViewsSidebar({ tableId }: { tableId: string }) {
 
     setSwitchingViewId(viewId);
 
-    const key = { tableId, viewId, skip: 0, take: 200 } as const;
+    const key = { tableId, viewId, skip: 0} as const;
     void utils.row.list.invalidate(key);
     try {
       // evaluate the appropriate promise first, then await it to avoid an unused-expression

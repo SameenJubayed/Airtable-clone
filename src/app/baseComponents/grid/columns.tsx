@@ -112,7 +112,7 @@ function HeaderWithMenu({tableId, col, position}: {
         onDelete={async () => {
           await del.mutateAsync({ columnId: col.id });
           await utils.column.listByTable.invalidate({ tableId });
-          await utils.row.list.invalidate({ tableId, skip: 0, take: 200 });
+          await utils.row.list.invalidate({ tableId, skip: 0 });
         }}
         // Optional stubs (wire when you implement)
         onDuplicate={undefined}

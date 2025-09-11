@@ -158,7 +158,7 @@ export default function FieldEditorPopover({
         await changeType.mutateAsync({ columnId: initial.columnId, type });
       }
       await utils.column.listByTable.invalidate({ tableId });
-      await utils.row.list.invalidate({ tableId, skip: 0, take: 200 });
+      await utils.row.list.invalidate({ tableId, skip: 0 });
       onClose();
     }
   };

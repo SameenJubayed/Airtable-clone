@@ -117,7 +117,7 @@ export default function SortMenuPopover({
       if (!viewId) return;
 
       // refresh rows in the grid
-      void utils.row.list.invalidate({ tableId, viewId, skip: 0, take: 200 });
+      void utils.row.list.invalidate({ tableId, viewId, skip: 0});
 
       // Keep caches in sync with what we just saved
       const payload = rowsToPayload();

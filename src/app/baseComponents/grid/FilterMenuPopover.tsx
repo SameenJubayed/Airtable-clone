@@ -334,7 +334,7 @@ export default function FilterMenuPopover({
 }) {
   const panelRef = useRef<HTMLDivElement | null>(null);
 
-  // NOTE: backend currently ANDs all filters; we keep UI logic state for later.
+
   const [logic, setLogic] = useState<"and" | "or">("and");
   const [conds, setConds] = useState<Cond[]>([]);
   const [isTyping, setIsTyping] = useState(false);
@@ -349,16 +349,17 @@ export default function FilterMenuPopover({
   // --- Save to server (write-through cache on success)
   const updateView = api.view.updateConfig.useMutation({
     onSuccess: async (updated) => {
-      // keep list cache in sync
       utils.view.listByTable.setData({ tableId }, (old) =>
-        old?.map((v) => (v.id === updated.id ? { ...v, filters: updated.filters } : v)),
+        old?.map((v) =>
+          v.id === updated.id
+            ? { ...v, filters: updated.filters, filtersLogic: updated.filtersLogic } 
+            : v
+        ),
       );
-      // keep single-view cache in sync (Sort menu reads from here)
       utils.view.get.setData({ viewId: updated.id }, (old) =>
-        old ? { ...old, filters: updated.filters } : old,
+        old ? { ...old, filters: updated.filters, filtersLogic: updated.filtersLogic } : old,
       );
-      // refresh rows for this view
-      await utils.row.list.invalidate({ tableId, viewId: updated.id, skip: 0, take: 200 });
+      await utils.row.list.invalidate({ tableId, viewId: updated.id, skip: 0 });
     },
   });
 
@@ -377,28 +378,30 @@ export default function FilterMenuPopover({
   // Hydrate from server when popover opens — but only after views are loaded.
   useEffect(() => {
     if (!open) return;
-    if (!viewsLoaded) return; // don't clobber local state while loading
+    if (!viewsLoaded) return;
     if (!activeView) return;
 
-    // ------- FIX: no-unsafe-assignment (validate filters with a type guard) -------
+    // validate filters as before
     const filtersUnknown = (activeView as { filters?: unknown } | undefined)?.filters;
     const raw: ServerFilter[] = Array.isArray(filtersUnknown)
       ? (filtersUnknown as unknown[]).filter(isServerFilter)
       : [];
 
-    // If DB has no filters, show empty builder; otherwise map to UI state
+    // NEW: hydrate logic
+    const logicUnknown = (activeView as { filtersLogic?: unknown } | undefined)?.filtersLogic;
+    const logicFromServer: "and" | "or" = logicUnknown === "or" ? "or" : "and";
+    setLogic(logicFromServer);
+
     const nextConds: Cond[] = raw.map((f) => ({
       id: crypto.randomUUID(),
       fieldId: f.columnId,
       op: fromServerOp[f.op],
       value: f.value == null ? "" : String(f.value),
     }));
-
     setConds(nextConds);
 
-    // Align the dedup key so auto-save doesn't immediately re-send on open
-    const canonicalPayload = JSON.stringify(raw);
-    lastSentRef.current = canonicalPayload;
+    // NEW: put logic into the dedup key
+    lastSentRef.current = JSON.stringify({ filters: raw, logic: logicFromServer });
   }, [open, viewsLoaded, activeView]);
 
   // Build server payload from UI state
@@ -439,16 +442,17 @@ export default function FilterMenuPopover({
     if (isTyping) return;
 
     const complete = onlyComplete(buildServerFilters());
-    const payload = JSON.stringify(complete);
-    if (payload === lastSentRef.current) return;
+    const payloadObj = { filters: complete, logic };  
+    const payloadKey = JSON.stringify(payloadObj);
+    if (payloadKey === lastSentRef.current) return;
 
     const t = window.setTimeout(() => {
-      lastSentRef.current = payload;
-      updateView.mutate({ viewId, filters: complete });
-    }, 200); // small debounce
+      lastSentRef.current = payloadKey;
+      updateView.mutate({ viewId, filters: complete, filtersLogic: logic });
+    }, 200);
 
     return () => window.clearTimeout(t);
-  }, [open, viewId, isTyping, buildServerFilters, onlyComplete, updateView]);
+  }, [open, viewId, isTyping, buildServerFilters, onlyComplete, updateView, logic]);
 
   if (!open) return null;
 

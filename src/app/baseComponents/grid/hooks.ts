@@ -14,7 +14,7 @@ type ColumnItem = RouterOutputs["column"]["listByTable"][number];
 
 export function useGridData(tableId: string, viewId?: string) {
   const enabled = isCuid(tableId); // don't run queries with temp ids
-  const rowKey = { tableId, viewId, skip: 0, take: 200 } as const;
+  const rowKey = { tableId, viewId, skip: 0 } as const;
   const columnsQ = api.column.listByTable.useQuery(
     { tableId },
     { enabled }              
@@ -55,7 +55,7 @@ export function useEditingKey() {
 
 export function useOptimisticInsertRow(tableId: string, viewId?: string) {
   const utils = api.useUtils();
-  const key = { tableId, viewId, skip: 0, take: 200 } as const;
+  const key = { tableId, viewId, skip: 0 } as const;
 
   const enabled = isCuid(tableId);
   const columnsQ = api.column.listByTable.useQuery({ tableId }, { enabled });
@@ -172,7 +172,7 @@ export function useOptimisticInsertRow(tableId: string, viewId?: string) {
 
 export function useOptimisticDeleteRow(tableId: string, viewId?: string) {
   const utils = api.useUtils();
-  const listKey = { tableId, viewId, skip: 0, take: 200 } as const;
+  const listKey = { tableId, viewId, skip: 0 } as const;
   const rowsQ = api.row.list.useQuery(listKey);
 
   const del = api.row.delete.useMutation({
@@ -216,7 +216,7 @@ export function useOptimisticUpdateCell(
   viewId?: string
 ) {
   const utils = api.useUtils();
-  const key = { tableId, viewId, skip: 0, take: 200 } as const;
+  const key = { tableId, viewId, skip: 0 } as const;
 
   const updateCell = api.row.updateCell.useMutation({
     onMutate: async ({ rowId, columnId, textValue, numberValue }) => {
@@ -263,7 +263,7 @@ export function useOptimisticAddColumn(
 ) {
   const utils = api.useUtils();
   const colKey = { tableId } as const;
-  const rowKey = { tableId, skip: 0, take: 200 } as const;
+  const rowKey = { tableId, skip: 0 } as const;
 
   return api.column.add.useMutation({
     // Optimistic add
