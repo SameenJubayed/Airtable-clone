@@ -20,8 +20,8 @@ export default async function BaseLayout({
       <BaseSidebar baseId={base.id} />   {/* fixed 56px wide */}
       <BaseHeader baseId={base.id} initialName={base.name} /> {/* fixed 56px tall */}
 
-      {/* Offset for header+rail*/}
-      <main className="pl-14 pt-14 h-[100vh] min-h-0 overflow-hidden">
+      {/* Offset for header+rail, and give the remaining area a real height */}
+      <main className="pl-14 pt-14 h-full min-h-0 overflow-hidden">
         {children}
       </main>
     </div>

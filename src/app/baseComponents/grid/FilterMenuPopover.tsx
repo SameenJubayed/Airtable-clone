@@ -480,14 +480,6 @@ export default function FilterMenuPopover({
         <AddIcon fontSize="small" className="mr-1" />
         Add condition
       </button>
-      <button
-        type="button"
-        className="text-sm text-gray-600 hover:text-black cursor-pointer flex items-center"
-        onClick={() => void 0 /* groups not implemented yet */}
-      >
-        <AddIcon fontSize="small" className="mr-1" />
-        Add condition group
-      </button>
     </div>
   );
 
