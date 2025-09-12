@@ -2,7 +2,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useEffect } from "react"
+import { useMemo, useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation";
 import { api } from "~/trpc/react";
 import StarBorderIcon from '@mui/icons-material/StarBorder';
@@ -36,9 +36,11 @@ export function BaseCard({ id, name, updatedAt, starred = false }: Props) {
   const [editing, setEditing] = useState(false);
   const [localName, setLocalName] = useState(name);
   const [localStarred, setLocalStarred] = useState(starred);
+  const [opening, setOpening] = useState(false);
 
   // 1) Fetch the first table id (very small payload)
   const firstTableQ = api.table.firstIdByBase.useQuery({ baseId: id }, { staleTime: 30_000 });
+  const firstViewForTable = api.view.firstViewForTable.useMutation();
   const targetHref = `/base/${id}/table/${firstTableQ.data?.tableId}`
 
   // Mutations
@@ -105,6 +107,33 @@ export function BaseCard({ id, name, updatedAt, starred = false }: Props) {
     router.prefetch?.(targetHref);
   };
 
+  const openBase = useCallback(async (e?: React.MouseEvent) => {
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    if (opening) return;
+    setOpening(true);
+    try {
+      // 1) Ensure we have a tableId
+      let tableId = firstTableQ.data?.tableId;
+      if (!tableId) {
+        const refetched = await firstTableQ.refetch();
+        tableId = refetched.data?.tableId;
+      }
+      if (!tableId) {
+        // No tables in base: route to base page (incorrect but shouldnt happen anyways)
+        router.push(`/base/${id}`);
+        return;
+      }
+
+      // 2) Ensure we have a viewId 
+      const viewId = (await firstViewForTable.mutateAsync({ tableId }))?.viewId ?? null;
+
+      // 3) Navigate to fully-qualified route
+      router.push(`/base/${id}/table/${tableId}?viewId=${viewId}`);
+    } finally {
+      setOpening(false);
+    }
+  }, [id, opening, firstTableQ, firstViewForTable, router]);
+
   const CardInner = (
     <div 
       className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition group-hover:shadow-md"
@@ -147,7 +176,7 @@ export function BaseCard({ id, name, updatedAt, starred = false }: Props) {
   return (
     <div className="relative group">
       {!editing ? (
-        <Link href={targetHref} className="block">
+        <Link href={targetHref} className="block" onClick={openBase}>
           {CardInner}
         </Link>
       ) : (
