@@ -12,6 +12,7 @@ import SortMenuPopover from "./grid/SortMenuPopover";
 import RowHeightMenu from "./grid/RowHeightMenu";
 import HideFieldsPopover from "./grid/HideFieldsPopover";
 import SearchPopover from "./grid/SearchPopover";
+import ProgressOverlay from "./grid/ProgressOverlay";
 import { useViews } from "./ViewsLayout";
 
 import { api } from "~/trpc/react";
@@ -51,7 +52,6 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
     );
   }, [viewsQ.data, activeViewId]);
 
-  // cap displayed view name to 15 chars with "..." suffix
   const displayViewName = useMemo(() => {
     return activeViewName.length > 15 ? activeViewName.slice(0, 15) + "..." : activeViewName;
   }, [activeViewName]);
@@ -75,6 +75,36 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
       compact ? "w-8 px-0 justify-center" : "px-2 gap-1",
       extra,
     ].join(" ");
+
+  ////////////////////// 100K ROW STUFF ////////////////////////////////////////
+  const startBulk = api.row.startBulkInsert.useMutation();
+  const [jobId, setJobId] = useState<string | null>(null);
+
+  const statusQ = api.row.getBulkJobStatus.useQuery(
+    { jobId: jobId ?? "cuid_placeholder_ignore" }, // won't be used when disabled
+    { enabled: !!jobId, refetchInterval: 700 }
+  );
+
+  const percent = (() => {
+    const d = statusQ.data;
+    if (!d) return 0;
+    if (!d.total) return 0;
+    return (d.inserted / d.total) * 100;
+  })();
+
+  useEffect(() => {
+    if (!jobId) return;
+    const s = statusQ.data?.status;
+    if (s === "done") {
+      setJobId(null);
+      // refresh first page; infinite scroll will be added in Phase 2
+      void utils.row.list.invalidate();
+    }
+    if (s === "error") {
+      console.error("Bulk insert error:", statusQ.data?.error);
+      setJobId(null);
+    }
+  }, [jobId, statusQ.data, utils.row.list]);
 
   ////////////////////// HIDE MENU + STATE /////////////////////////////////////
   const [hideOpen, setHideOpen] = useState(false);
@@ -192,32 +222,56 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
 
           {/* RIGHT: everything else, aligned to the far right */}
           <div className="ml-auto flex items-center gap-1">            
-            <button className={topBtnClass()} title="100k rows" aria-label="100k rows">
+            <button
+              className={topBtnClass()}
+              title="100k rows"
+              aria-label="100k rows"
+              onClick={async () => {
+                try {
+                  const { jobId } = await startBulk.mutateAsync({ tableId, total: 100_000, batchSize: 10_000 });
+                  setJobId(jobId);
+                } catch (e) {
+                  console.error(e);
+                  alert("Failed to start bulk insert");
+                }
+              }}
+            >
               <AddIcon fontSize="small" />
               {!compact && <span className="text-[13px]">100k Rows</span>}
             </button>
 
-          <button
-            ref={hideBtnRef}
-            className={topBtnClass()}
-            title="Hide fields"
-            aria-label="Hide fields"
-            onClick={() => setHideOpen((v) => !v)}
-            aria-haspopup="menu"
-            aria-expanded={hideOpen}
-          >
-            <VisibilityOffOutlinedIcon fontSize="small" />
-            {!compact && <span className="text-[13px]">Hide fields</span>}
-          </button>
+            {jobId && (
+              <ProgressOverlay
+                percent={percent}
+                label={
+                  statusQ.data?.status === "running"
+                    ? `Adding ${statusQ.data.inserted.toLocaleString()} / ${statusQ.data.total.toLocaleString()} rows…`
+                    : "Preparing bulk insert…"
+                }
+              />
+            )}
 
-          <HideFieldsPopover
-            open={hideOpen}
-            onClose={() => setHideOpen(false)}
-            anchorEl={hideBtnRef.current}
-            columns={(columnsQ.data ?? []).map(c => ({ id: c.id, name: c.name, type: c.type }))}
-            tableId={tableId}
-            viewId={activeViewId}
-          />
+            <button
+              ref={hideBtnRef}
+              className={topBtnClass()}
+              title="Hide fields"
+              aria-label="Hide fields"
+              onClick={() => setHideOpen((v) => !v)}
+              aria-haspopup="menu"
+              aria-expanded={hideOpen}
+            >
+              <VisibilityOffOutlinedIcon fontSize="small" />
+              {!compact && <span className="text-[13px]">Hide fields</span>}
+            </button>
+
+            <HideFieldsPopover
+              open={hideOpen}
+              onClose={() => setHideOpen(false)}
+              anchorEl={hideBtnRef.current}
+              columns={(columnsQ.data ?? []).map(c => ({ id: c.id, name: c.name, type: c.type }))}
+              tableId={tableId}
+              viewId={activeViewId}
+            />
 
             <button
               ref={filterBtnRef}

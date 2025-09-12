@@ -3,6 +3,7 @@
 
 import { useMemo, useState } from "react";
 import { type ColumnSizingState } from "@tanstack/react-table";
+// import { useInfiniteQuery } from "@tanstack/react-query";
 import { api } from "~/trpc/react";
 import type { CellRecord, EditingKey } from "./types";
 import type { RouterOutputs } from "~/trpc/react";
@@ -79,7 +80,8 @@ export function useOptimisticInsertRow(tableId: string, viewId?: string) {
       const now = new Date();
 
       utils.row.list.setData(key, (old) => {
-        const base: RowList = old ?? { rows: [], cells: [] as RowList["cells"] };
+        const base: RowList =
+          old ?? { rows: [], cells: [], hasMore: false, nextSkip: 0 };
 
         // compute end from max(position), not rows.length
         let end = 0;
@@ -118,10 +120,13 @@ export function useOptimisticInsertRow(tableId: string, viewId?: string) {
           updatedAt: now,
         }));
 
-        return {
+        const next: RowList = {
           rows,
           cells: [...base.cells, ...addCells],
+          hasMore: base.hasMore,
+          nextSkip: base.nextSkip,
         } as RowList;
+        return next;
       });
 
       return { previous, tempRowId };
@@ -189,6 +194,8 @@ export function useOptimisticDeleteRow(tableId: string, viewId?: string) {
             .filter((r) => r.id !== rowId)
             .map((r) => (r.position > afterPos ? { ...r, position: r.position - 1 } : r)),
           cells: old.cells.filter((c) => c.rowId !== rowId),
+          hasMore: old.hasMore,
+          nextSkip: old.nextSkip,
         } as RowList;
       });
 
@@ -223,21 +230,21 @@ export function useOptimisticUpdateCell(
       await utils.row.list.cancel(key);                
       const previousData = utils.row.list.getData(key);
 
-      utils.row.list.setData(key, (old) => {          
-        if (!old) return old;
-        return {
-          ...old,
-          cells: old.cells.map((cell) =>
+      if (previousData) {
+        const next: RowList = {
+          ...previousData, 
+          cells: previousData.cells.map((cell) =>
             cell.rowId === rowId && cell.columnId === columnId
               ? {
                   ...cell,
                   textValue: textValue !== undefined ? textValue : cell.textValue,
                   numberValue: numberValue !== undefined ? numberValue : cell.numberValue,
                 }
-              : cell,
+              : cell
           ),
-        };
-      });
+        } as RowList;
+        utils.row.list.setData(key, next);
+      }
 
       return { previousData };
     },

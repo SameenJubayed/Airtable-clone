@@ -1,7 +1,114 @@
 // src/server/api/routers/row.ts
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
+import { faker } from "@faker-js/faker";
+import cuid from "cuid";
+import type { PrismaClient } from "@prisma/client";
 import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
+
+// ---------------- FOR BULK INSERTING (100k holy moly) ----------------
+
+async function runBulkInsertWorker(opts: {
+  prisma: PrismaClient;
+  jobId: string;
+  tableId: string;
+  total: number;          // e.g., 100_000
+  batchSize?: number;     // e.g., 10_000
+}) {
+  const { prisma, jobId, tableId, total, batchSize = 10_000 } = opts;
+
+  try {
+    // mark running
+    await prisma.bulkJob.update({ where: { id: jobId }, data: { status: "running" } });
+
+    // gather columns once
+    const cols = await prisma.column.findMany({
+      where: { tableId },
+      select: { id: true, type: true },
+      orderBy: { position: "asc" },
+    });
+
+    // find current max position to keep ordering stable
+    const agg = await prisma.row.aggregate({
+      where: { tableId },
+      _max: { position: true },
+    });
+    let nextPos = (agg._max.position ?? -1) + 1;
+
+    let inserted = 0;
+
+    while (inserted < total) {
+      const size = Math.min(batchSize, total - inserted);
+
+      // Pre-generate row ids so we can bulk-create cells without extra reads
+      const now = new Date();
+      const rowIds: string[] = Array.from({ length: size }, () => cuid());
+
+      // 1) create rows in one batch
+      await prisma.row.createMany({
+        data: rowIds.map((id, k) => ({
+          id,
+          tableId,
+          position: nextPos + k,
+          createdAt: now,
+          updatedAt: now,
+        })),
+        skipDuplicates: true,
+      });
+
+      // 2) create cells in chunks to keep payloads reasonable
+      if (cols.length > 0) {
+        const perChunk = 25_000; 
+        const allCells = new Array<{ 
+          rowId: string; 
+          columnId: string; 
+          textValue: string | null; 
+          numberValue: number | null; 
+          createdAt: Date; 
+          updatedAt: Date; 
+        }>(rowIds.length * cols.length);
+        let i = 0;
+
+        for (const rowId of rowIds) {
+          for (const c of cols) {
+            // fake data per column type
+            const text = c.type === "TEXT" ? faker.person.fullName() : null;
+            const num  = c.type === "NUMBER" ? faker.number.float({ min: 0, max: 100_000, fractionDigits: 2 }) : null;
+            allCells[i++] = {
+              rowId, columnId: c.id,
+              textValue: text, numberValue: num,
+              createdAt: now, updatedAt: now,
+            };
+          }
+        }
+
+        for (let start = 0; start < allCells.length; start += perChunk) {
+          const slice = allCells.slice(start, start + perChunk);
+          await prisma.cell.createMany({ data: slice, skipDuplicates: true });
+        }
+      }
+
+      // advance counters
+      nextPos += size;
+      inserted += size;
+
+      await prisma.bulkJob.update({
+        where: { id: jobId },
+        data: { inserted },
+      });
+    }
+
+    await prisma.bulkJob.update({
+      where: { id: jobId },
+      data: { status: "done", finishedAt: new Date() },
+    });
+  } catch (err) {
+    await prisma.bulkJob.update({
+      where: { id: jobId },
+      data: { status: "error", error: String(err) },
+    });
+  }
+}
 
 const ViewFilterZ = z.object({
   columnId: z.string().cuid(),
@@ -44,6 +151,7 @@ export const rowRouter = createTRPCRouter({
         tableId: z.string().cuid(),
         viewId: z.string().cuid().optional(),
         skip: z.number().int().min(0).default(0),
+        cursor: z.number().int().min(0).optional(),
         take: z.number().int().min(1).max(200).default(200),
       }),
     )
@@ -216,7 +324,13 @@ export const rowRouter = createTRPCRouter({
         WHERE "rowId" IN (${rowIdsSql})
       `);
 
-      return { rows, cells};
+      const skip = input.cursor ?? input.skip ?? 0;
+      if (rows.length === 0) {
+        return { rows: [], cells: [], hasMore: false, nextSkip: skip };
+      }
+      const hasMore = rows.length === input.take;
+
+      return { rows, cells, hasMore, nextSkip: skip + rows.length };
     }),
   
   searchMatches: protectedProcedure
@@ -363,5 +477,53 @@ export const rowRouter = createTRPCRouter({
 
       await ctx.db.row.delete({ where: { id: input.rowId } });
       return { ok: true };
+    }),
+
+  /**
+   * FOR BULK INSERTING 100k ROWS
+   */
+  startBulkInsert: protectedProcedure
+    .input(z.object({
+      tableId: z.string().cuid(),
+      total: z.number().int().positive().default(100_000),
+      batchSize: z.number().int().positive().max(50_000).default(10_000),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // ownership check
+      await ctx.db.table.findFirstOrThrow({
+        where: { id: input.tableId, base: { createdById: ctx.session.user.id } },
+        select: { id: true },
+      });
+
+      const job = await ctx.db.bulkJob.create({
+        data: {
+          tableId: input.tableId,
+          total: input.total,
+          status: "pending",
+        },
+        select: { id: true },
+      });
+
+      // fire-and-forget worker
+      void runBulkInsertWorker({
+        prisma: ctx.db,
+        jobId: job.id,
+        tableId: input.tableId,
+        total: input.total,
+        batchSize: input.batchSize,
+      });
+
+      return { jobId: job.id };
+    }),
+
+  getBulkJobStatus: protectedProcedure
+    .input(z.object({ jobId: z.string().cuid() }))
+    .query(async ({ ctx, input }) => {
+      const job = await ctx.db.bulkJob.findUnique({
+        where: { id: input.jobId },
+        select: { status: true, inserted: true, total: true, error: true },
+      });
+      if (!job) return { status: "error", inserted: 0, total: 0, error: "not found" };
+      return job;
     }),
 });

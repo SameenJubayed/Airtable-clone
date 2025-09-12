@@ -141,6 +141,19 @@ model Cell {
     @@index([numberValue])
 }
 
+model BulkJob {
+  id         String   @id @default(cuid())
+  tableId    String
+  total      Int
+  inserted   Int      @default(0)
+  status     String   @default("pending") // pending | running | done | error
+  error      String?
+  startedAt  DateTime @default(now())
+  finishedAt DateTime?
+
+  @@index([tableId, status])
+}
+
 // Necessary for Next auth
 model Account {
     id                       String  @id @default(cuid())
