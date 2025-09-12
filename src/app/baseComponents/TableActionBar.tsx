@@ -51,6 +51,11 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
     );
   }, [viewsQ.data, activeViewId]);
 
+  // cap displayed view name to 15 chars with "..." suffix
+  const displayViewName = useMemo(() => {
+    return activeViewName.length > 15 ? activeViewName.slice(0, 15) + "..." : activeViewName;
+  }, [activeViewName]);
+
   const utils = api.useUtils();
 
   ////////////////////// RESPONSIVE TOOLBAR SIZE ///////////////////////////////
@@ -180,7 +185,7 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
               title="Change view"
             >
               <TableChartOutlinedIcon fontSize="small" className="opacity-80" style={{ color: "rgb(22, 110, 225)"}}/>
-              <span className="text-[13px] text-grey-600 font-medium">{activeViewName}</span>
+              <span className="text-[13px] text-grey-600 font-medium">{displayViewName}</span>
               <span className="inline-block text-gray-500"><ExpandMoreIcon/></span>
             </button>
           </div>

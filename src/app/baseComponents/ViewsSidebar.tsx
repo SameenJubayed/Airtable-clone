@@ -21,7 +21,7 @@ export default function ViewsSidebar({ tableId }: { tableId: string }) {
 
   const { setSwitchingViewId } = useViews();
 
-  const views = viewsQ.data ?? [];
+  const views = useMemo(() => viewsQ.data ?? [], [viewsQ.data]);
   const loading = viewsQ.isLoading;
 
   const nextGridName = useMemo(() => {
@@ -51,29 +51,113 @@ export default function ViewsSidebar({ tableId }: { tableId: string }) {
     router.push(`${pathname}?${sp.toString()}`);
   };
 
-  // ----- create / rename / delete mutations -----
+  // create mutation
   const create = api.view.create.useMutation({
-    onSuccess: async (created) => {
-      await viewsQ.refetch();
+    // Optimistically append a temporary view
+    onMutate: async (vars) => {
+      await utils.view.listByTable.cancel({ tableId });
+      const previous = utils.view.listByTable.getData({ tableId }) ?? [];
+      const optimisticId = `temp-${Date.now()}`;
+      const now = new Date();
+
+      utils.view.listByTable.setData({ tableId }, [
+        ...previous,
+        {
+          id: optimisticId,
+          tableId,
+          name: vars.name ?? "Grid View",
+          createdAt: now,
+          updatedAt: now,
+          search: null,
+          filters: [],
+          sorts: [],
+          hidden: [],
+          filtersLogic: "and" as const,
+        },
+      ]);
+
+      return { previous, optimisticId };
+    },
+    // Replace temp with real + navigate
+    onSuccess: (created, _vars, ctx) => {
+      const list = utils.view.listByTable.getData({ tableId }) ?? [];
+      utils.view.listByTable.setData(
+        { tableId },
+        list.map((v) => (v.id === ctx?.optimisticId ? created : v)),
+      );
+
       const sp = new URLSearchParams(params.toString());
       sp.set("viewId", created.id);
       router.push(`${pathname}?${sp.toString()}`);
     },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) utils.view.listByTable.setData({ tableId }, ctx.previous);
+    },
+    onSettled: () => {
+      void utils.view.listByTable.invalidate({ tableId });
+    },
   });
 
+  // rename mutation
   const rename = api.view.rename.useMutation({
-    onSuccess: async () => {
-      await viewsQ.refetch();
+    onMutate: async ({ viewId, name }) => {
+      await utils.view.listByTable.cancel({ tableId });
+      const previous = utils.view.listByTable.getData({ tableId }) ?? [];
+      utils.view.listByTable.setData(
+        { tableId },
+        previous.map((v) => (v.id === viewId ? { ...v, name } : v)),
+      );
+      // keep individual view cache in sync if present
+      utils.view.get.setData({ viewId }, (old) => (old ? { ...old, name } : old));
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) utils.view.listByTable.setData({ tableId }, ctx.previous);
+    },
+    onSettled: () => {
+      void utils.view.listByTable.invalidate({ tableId });
     },
   });
 
-  const del = api.view.delete.useMutation({
-    onSuccess: async () => {
-      await viewsQ.refetch();
-    },
-  });
-
+  // delete mutation
   const firstViewForTable = api.view.firstViewForTable.useMutation();
+  const del = api.view.delete.useMutation({
+    onMutate: async ({ viewId }) => {
+      await utils.view.listByTable.cancel({ tableId });
+      const previous = utils.view.listByTable.getData({ tableId }) ?? [];
+      const next = previous.filter((v) => v.id !== viewId);
+
+      // Optimistically remove
+      utils.view.listByTable.setData({ tableId }, next);
+
+      // If deleting active, redirect optimistically to the first remaining view (if any)
+      if (viewId === activeViewId && next.length > 0) {
+        const fallback = next[0]!;
+        const sp = new URLSearchParams(params.toString());
+        sp.set("viewId", fallback.id);
+        setSwitchingViewId(fallback.id);
+        router.push(`${pathname}?${sp.toString()}`);
+      }
+
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) utils.view.listByTable.setData({ tableId }, ctx.previous);
+    },
+    onSuccess: async (_ok, { viewId }) => {
+      // If active was deleted and there are no views left, create a default one then navigate
+      const currentList = utils.view.listByTable.getData({ tableId }) ?? [];
+      if (viewId === activeViewId && currentList.length === 0) {
+        const created = await create.mutateAsync({ tableId, name: "Grid view" });
+        const sp = new URLSearchParams(params.toString());
+        sp.set("viewId", created.id);
+        router.push(`${pathname}?${sp.toString()}`);
+      }
+    },
+    onSettled: () => {
+      void utils.view.listByTable.invalidate({ tableId });
+    },
+  });
 
   // inline editing state 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -172,7 +256,7 @@ export default function ViewsSidebar({ tableId }: { tableId: string }) {
                         onChange={(e) => setEditingName(e.target.value)}
                         onBlur={commitEdit}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter") commitEdit();
+                          if (e.key === "Enter") void commitEdit();
                           if (e.key === "Escape") cancelEdit();
                         }}
                         className="flex-1 min-w-0 rounded border border-gray-300 px-2 py-1 text-sm outline-none focus:border-indigo-500 bg-white"
