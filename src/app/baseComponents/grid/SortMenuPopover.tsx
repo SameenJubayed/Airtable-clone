@@ -144,24 +144,22 @@ export default function SortMenuPopover({
 
   // Auto-save ONLY when actual sort payload changes (debounced)
   useEffect(() => {
-  if (!open) return;                
-  if (!autoSort || !viewId) return;
+    if (!open) return; 
+    if (!autoSort || !viewId) return;
 
-  if (!viewQ.data) return;
+    const payloadArr = rowsToPayload(); 
+    const payloadStr = JSON.stringify(payloadArr);
 
-  const payloadArr = rowsToPayload();
-  if (payloadArr.length === 0) return;
-  
-  const payloadStr = JSON.stringify(payloadArr);
-  if (payloadStr === lastPayloadRef.current) return;
+    // Dedup: only send when changed (incl. going to [])
+    if (payloadStr === lastPayloadRef.current) return;
 
-  const t = setTimeout(() => {
-    lastPayloadRef.current = payloadStr;
-    commitSorts(payloadArr);
-  }, 200);
+    const t = setTimeout(() => {
+      lastPayloadRef.current = payloadStr;
+      commitSorts(payloadArr);   
+    }, 200);
 
-  return () => clearTimeout(t);
-}, [open, autoSort, viewId, rowsToPayload, viewQ.data, commitSorts]);
+    return () => clearTimeout(t);
+  }, [open, autoSort, viewId, rowsToPayload, commitSorts]);
 
   // ---------- UI: submenu mgmt ----------
   const [openSubmenu, setOpenSubmenu] =
