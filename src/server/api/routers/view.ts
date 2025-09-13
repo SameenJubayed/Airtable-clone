@@ -156,6 +156,11 @@ export const viewRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ input, ctx }) => {
+      console.log('[view.updateConfig] input keys:', Object.keys(input));
+      console.log('[view.updateConfig] input.sorts:', JSON.stringify(input.sorts));
+      console.log('[view.updateConfig] input.filters:', JSON.stringify(input.filters));
+      console.log('[view.updateConfig] input.hidden:', JSON.stringify(input.hidden));
+      console.log('[view.updateConfig] input.filtersLogic:', input.filtersLogic);
       await ctx.db.tableView.findFirstOrThrow({
         where: { id: input.viewId, table: { base: { createdById: ctx.session.user.id } } },
         select: { id: true },
@@ -163,24 +168,16 @@ export const viewRouter = createTRPCRouter({
 
       const data: Prisma.TableViewUpdateInput = {};
 
-      if (Object.prototype.hasOwnProperty.call(input, "search")) {
-        data.search = input.search ?? null;
-      }
-      if (Object.prototype.hasOwnProperty.call(input, "filters")) {
-        data.filters = input.filters ?? [];
-      }
-      if (Object.prototype.hasOwnProperty.call(input, "sorts")) {
-        data.sorts = input.sorts ?? [];
-      }
-      if (Object.prototype.hasOwnProperty.call(input, "hidden")) {
-        data.hidden = input.hidden ?? [];
-      }
-      if (Object.prototype.hasOwnProperty.call(input, "filtersLogic")) {
-        data.filtersLogic = input.filtersLogic!;
-      }
+      if ("sorts" in input && input.sorts !== undefined) data.sorts = input.sorts;
+      if ("hidden" in input && input.hidden !== undefined) data.hidden = input.hidden;
+      if ("filters" in input && input.filters !== undefined) data.filters = input.filters;
+      if ("filtersLogic" in input && input.filtersLogic !== undefined) data.filtersLogic = input.filtersLogic;
+      if ("search" in input) data.search = input.search ?? null;
+
+      console.log('[view.updateConfig] writing data:', JSON.stringify(data));
 
       // RETURN the fields your client relies on (includes filtersLogic)
-      return ctx.db.tableView.update({
+      const updated =  ctx.db.tableView.update({
         where: { id: input.viewId },
         data,
         select: {
@@ -193,6 +190,10 @@ export const viewRouter = createTRPCRouter({
           filtersLogic: true, 
         },
       });
+
+      console.log('[view.updateConfig] updated result.sorts:', JSON.stringify((await updated).sorts));
+
+      return updated;
     }),
 
   delete: protectedProcedure

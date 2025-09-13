@@ -39,6 +39,7 @@ export default function SortMenuPopover({
   columns,
   tableId,
   viewId,
+  pageTake = 200
 }: {
   open: boolean;
   onClose: () => void;
@@ -46,6 +47,7 @@ export default function SortMenuPopover({
   columns: ColumnLite[];
   tableId: string;
   viewId: string | null;
+  pageTake?: number;
 }) {
   const utils = api.useUtils();
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -117,7 +119,8 @@ export default function SortMenuPopover({
       if (!viewId) return;
 
       // refresh rows in the grid
-      void utils.row.list.invalidate({ tableId, viewId, skip: 0});
+      utils.row.list.setInfiniteData({ tableId, viewId, take: pageTake }, undefined);
+      void utils.row.list.invalidate({ tableId, viewId, take: pageTake });
 
       // Keep caches in sync with what we just saved
       const payload = rowsToPayload();
@@ -141,21 +144,24 @@ export default function SortMenuPopover({
 
   // Auto-save ONLY when actual sort payload changes (debounced)
   useEffect(() => {
-    if (!autoSort || !viewId) return; // no-op if autosort is off or no view
+  if (!open) return;                
+  if (!autoSort || !viewId) return;
 
-    const payloadArr = rowsToPayload();
-    const payloadStr = JSON.stringify(payloadArr);
+  if (!viewQ.data) return;
 
-    // Dedup: if identical to last snapshot, do nothing
-    if (payloadStr === lastPayloadRef.current) return;
+  const payloadArr = rowsToPayload();
+  if (payloadArr.length === 0) return;
+  
+  const payloadStr = JSON.stringify(payloadArr);
+  if (payloadStr === lastPayloadRef.current) return;
 
-    const t = setTimeout(() => {
-      lastPayloadRef.current = payloadStr; // record before sending to avoid bursts
-      commitSorts(payloadArr);
-    }, 200);
+  const t = setTimeout(() => {
+    lastPayloadRef.current = payloadStr;
+    commitSorts(payloadArr);
+  }, 200);
 
-    return () => clearTimeout(t);
-  }, [rowsToPayload, autoSort, viewId, commitSorts]);
+  return () => clearTimeout(t);
+}, [open, autoSort, viewId, rowsToPayload, viewQ.data, commitSorts]);
 
   // ---------- UI: submenu mgmt ----------
   const [openSubmenu, setOpenSubmenu] =

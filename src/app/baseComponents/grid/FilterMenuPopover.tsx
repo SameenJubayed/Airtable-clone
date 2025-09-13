@@ -324,6 +324,7 @@ export default function FilterMenuPopover({
   columns,
   tableId,
   viewId,
+  pageTake = 200
 }: {
   open: boolean;
   onClose: () => void;
@@ -331,6 +332,7 @@ export default function FilterMenuPopover({
   columns: ColumnLite[];
   tableId: string;
   viewId?: string | null;
+  pageTake?: number
 }) {
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -359,7 +361,11 @@ export default function FilterMenuPopover({
       utils.view.get.setData({ viewId: updated.id }, (old) =>
         old ? { ...old, filters: updated.filters, filtersLogic: updated.filtersLogic } : old,
       );
-      await utils.row.list.invalidate({ tableId, viewId: updated.id, skip: 0 });
+      utils.row.list.setInfiniteData(
+        { tableId, viewId: updated.id, take: pageTake },
+        undefined
+      );
+      await utils.row.list.invalidate({ tableId, viewId: updated.id, take: pageTake });
     },
   });
 

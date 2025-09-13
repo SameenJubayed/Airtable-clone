@@ -2,27 +2,35 @@
 "use client";
 import { useEffect, useMemo } from "react";
 import {
-  useGridData,
   useColumnSizingState, 
   useEditingKey, 
-  useOptimisticUpdateCell, 
+  useOptimisticUpdateCell,
+  useInfiniteRows,
+  useOptimisticInsertRow,
+  useOptimisticDeleteRow, 
 } from "./hooks";
 import { useDynamicColumns, useRowNumberColumn } from "./columns";
 import TableView from "./tableView";
 import { useViews } from "../ViewsLayout";
 import { api } from "~/trpc/react";
+import { PAGE_TAKE } from "./constants";
 
 export default function BaseGrid({ tableId, viewId }: { tableId: string; viewId: string | null }) {
-  const { columnsQ, rowsQ, data } = useGridData(tableId, viewId ?? undefined);
+  // columns query
+  const columnsQ = api.column.listByTable.useQuery({ tableId });
+
+  // infinite rows (replaces rowsQ/data from useGridData)
+  const rowsQ = useInfiniteRows({ tableId, viewId: viewId ?? undefined, take: PAGE_TAKE });
+  const data = rowsQ.records;
+
   const { columnSizing, setColumnSizing } = useColumnSizingState();
   const { editingKey, setEditingKey } = useEditingKey();
-  const updateCell = useOptimisticUpdateCell(tableId, viewId ?? undefined);
+  const { insertAtEnd, insertAbove, insertBelow } = useOptimisticInsertRow(tableId, viewId ?? undefined, PAGE_TAKE);
+  const updateCell = useOptimisticUpdateCell(tableId, viewId ?? undefined, PAGE_TAKE);
+  const { deleteById } = useOptimisticDeleteRow(tableId, viewId ?? undefined, PAGE_TAKE);
 
   const { searchQ, switchingViewId, setSwitchingViewId } = useViews();
-  const rowIds = useMemo(
-    () => data.map((r) => r.rowId),
-    [data]
-  );
+  const rowIds = useMemo(() => data.map((r) => r.rowId), [data]);
 
   // Ask server for matches only when we have a query and rows loaded
   const matchesQ = api.row.searchMatches.useQuery(
@@ -51,9 +59,21 @@ export default function BaseGrid({ tableId, viewId }: { tableId: string; viewId:
   const rowNumCol = useRowNumberColumn();
   const dynamicCols = useDynamicColumns({
     columnsData: columnsQ.data
-      ?.filter(c => !hiddenIds.includes(c.id))             
-      .map(c => ({ id: c.id, name: c.name, type: c.type, width: c.width })),
-    editingKey, setEditingKey, updateCell, tableId, matchSet
+      ?.filter(c => !hiddenIds.includes(c.id))
+      .map(c => ({
+        id: c.id,
+        name: c.name,
+        type: c.type,
+        width: c.width,
+        position: c.position, 
+      })),
+    editingKey,
+    setEditingKey,
+    updateCell,
+    tableId,
+    matchSet,
+    viewId: viewId ?? undefined,
+    pageTake: PAGE_TAKE
   });
 
   // view-switch–aware loading
@@ -82,10 +102,19 @@ export default function BaseGrid({ tableId, viewId }: { tableId: string; viewId:
     <TableView
       tableId={tableId}
       viewId={viewId ?? undefined}
+      pageTake={PAGE_TAKE}
       data={data}
       columns={[rowNumCol, ...dynamicCols]}
       columnSizing={columnSizing}
       setColumnSizing={setColumnSizing}
+      fetchNextPage={rowsQ.fetchNextPage}
+      hasNextPage={rowsQ.hasNextPage}
+      isFetchingNextPage={rowsQ.isFetchingNextPage}
+      // optimistic actions (rowId-based)
+      onInsertAtEnd={insertAtEnd}
+      onInsertAbove={insertAbove}
+      onInsertBelow={insertBelow}
+      onDeleteRow={deleteById}
     />
   );
 }

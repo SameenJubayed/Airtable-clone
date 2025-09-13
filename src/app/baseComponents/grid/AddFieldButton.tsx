@@ -6,16 +6,23 @@ import AddIcon from "@mui/icons-material/Add";
 import FieldEditorPopover from "./FieldEditorPopover";
 import { useOptimisticAddColumn } from "./hooks";
 
-type Props = { tableId: string };
+type Props = {
+  tableId: string;
+  viewId?: string;     // ⟵ add
+  pageTake: number;    // ⟵ add
+};
 
-export default function AddFieldButton({ tableId }: Props) {
+export default function AddFieldButton({ tableId, viewId, pageTake }: Props) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement | null>(null);
 
-  const addColumn = useOptimisticAddColumn(tableId, {
-    onOptimisticApplied: () => setOpen(false),
-  });
-
+  const addColumn = useOptimisticAddColumn(
+    tableId,
+    viewId,                  
+    pageTake,                
+    { onOptimisticApplied: () => setOpen(false) }
+  );
+  
   return (
     <div className="relative h-full w-full flex items-center justify-center">
       <button

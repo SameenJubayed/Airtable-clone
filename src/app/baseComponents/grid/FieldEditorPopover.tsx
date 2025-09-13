@@ -24,6 +24,8 @@ type Mode = "create" | "edit";
 
 export type FieldEditorPopoverProps = {
   tableId: string;
+  viewId?: string;
+  pageTake?: number;
 
   open: boolean;
   onClose: () => void;
@@ -62,12 +64,14 @@ export type FieldEditorPopoverProps = {
 
 export default function FieldEditorPopover({
   tableId,
+  viewId,
+  pageTake,
   open,
   onClose,
   anchorEl,
   anchorRect,
   align = "auto",
-  gap = 8,
+  gap = 1,
   mode,
   initial,
   labels,
@@ -159,6 +163,13 @@ export default function FieldEditorPopover({
       }
       await utils.column.listByTable.invalidate({ tableId });
       await utils.row.list.invalidate({ tableId, skip: 0 });
+      if (pageTake) {
+        // drop cached pages then invalidate (ensures refetch of first page)
+        utils.row.list.setInfiniteData({ tableId, viewId, take: pageTake }, undefined);
+        await utils.row.list.invalidate({ tableId, viewId, take: pageTake });
+      } else {
+        await utils.row.list.invalidate({ tableId });
+      }
       onClose();
     }
   };

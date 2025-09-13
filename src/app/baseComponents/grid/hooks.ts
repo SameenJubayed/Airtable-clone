@@ -3,15 +3,29 @@
 
 import { useMemo, useState } from "react";
 import { type ColumnSizingState } from "@tanstack/react-table";
-// import { useInfiniteQuery } from "@tanstack/react-query";
 import { api } from "~/trpc/react";
 import type { CellRecord, EditingKey } from "./types";
 import type { RouterOutputs } from "~/trpc/react";
 import { isCuid } from "./isCuid";
+// mutate all infinite pages immutably
+import type { InfiniteData } from "@tanstack/react-query";
 
 type RowList = RouterOutputs["row"]["list"];
+type RowPage = RowList;
 type ColumnLite = { id: string; name: string; type: "TEXT" | "NUMBER" };
 type ColumnItem = RouterOutputs["column"]["listByTable"][number];
+
+function mapInfinitePages<TPage, TPageParam = unknown>(
+  data: InfiniteData<TPage, TPageParam> | undefined,
+  fn: (page: TPage) => TPage
+): InfiniteData<TPage, TPageParam> | undefined {
+  if (!data) return data;
+  return {
+    ...data,
+    pages: data.pages.map(fn),
+    pageParams: data.pageParams,
+  };
+}
 
 export function useGridData(tableId: string, viewId?: string) {
   const enabled = isCuid(tableId); // don't run queries with temp ids
@@ -54,210 +68,243 @@ export function useEditingKey() {
   return { editingKey, setEditingKey };
 }
 
-export function useOptimisticInsertRow(tableId: string, viewId?: string) {
+export function useOptimisticInsertRow(
+  tableId: string,
+  viewId?: string,
+  take= 200
+) {
   const utils = api.useUtils();
-  const key = { tableId, viewId, skip: 0 } as const;
-
-  const enabled = isCuid(tableId);
-  const columnsQ = api.column.listByTable.useQuery({ tableId }, { enabled });
-  const rowsQ = api.row.list.useQuery(key, { enabled });
-
-  const getEndPosition = () => {
-    const rows = utils.row.list.getData(key)?.rows ?? [];
-    if (rows.length === 0) return 0;
-    let maxPos = -1;
-    for (const r of rows) if (r.position > maxPos) maxPos = r.position;
-    return maxPos + 1;
-  };
+  const colQ = api.column.listByTable.useQuery({ tableId }, { enabled: isCuid(tableId) });
+  const key = { tableId, viewId, take } as const;
 
   const insertRow = api.row.insertAt.useMutation({
-    onMutate: async (vars) => {
+    async onMutate(vars) {
       await utils.row.list.cancel(key);
+      const prev = utils.row.list.getInfiniteData(key);
 
-      const previous = utils.row.list.getData(key);
-      const cols = (columnsQ.data ?? []) as ColumnLite[];
-      const tempRowId = `optimistic-${Date.now()}`;
+      const cols = (colQ.data ?? []) as ColumnLite[];
       const now = new Date();
+      const tempRowId = `optimistic-${Date.now()}`;
 
-      utils.row.list.setData(key, (old) => {
-        const base: RowList =
-          old ?? { rows: [], cells: [], hasMore: false, nextSkip: 0 };
+      // compute desired position
+      const current = prev?.pages ?? [];
+      let maxPos = -1;
+      for (const p of current) for (const r of p.rows) if (r.position > maxPos) maxPos = r.position;
+      const endPos = maxPos + 1;
+      const desired = Math.max(0, Math.min(vars.position ?? endPos, endPos));
 
-        // compute end from max(position), not rows.length
-        let end = 0;
-        for (const r of base.rows) if (r.position >= end) end = r.position + 1;
+      // bump positions >= desired across pages
+      const bumped = (data: typeof prev | undefined) =>
+        mapInfinitePages(data, (page) => ({
+          ...page,
+          rows: page.rows.map((r) =>
+            r.position >= desired ? { ...r, position: r.position + 1 } : r
+          ),
+        } as RowPage));
 
-        // clamp requested position against [0, end]
-        const requested = vars.position ?? end;
-        const desired = Math.max(0, Math.min(requested, end));
+      // choose a page to physically insert into:
+      // - if the page that contains the row at `desired` exists, put it there
+      // - else append to the last page (or create a first page)
+      const pickPageIndex = () => {
+        if (!current.length) return 0;
+        // find page that has a row with target position
+        for (let i = 0; i < current.length; i++) {
+          if (current[i]!.rows.some((r) => r.position === desired)) return i;
+        }
+        return current.length - 1; // append to last page
+      };
 
-        // ensure we operate on a position-sorted view
-        const sorted = [...base.rows].sort((a, b) => a.position - b.position);
+      const emptyCells = cols.map((c) => ({
+        rowId: tempRowId,
+        columnId: c.id,
+        textValue: null,
+        numberValue: null,
+        createdAt: now,
+        updatedAt: now,
+      }));
 
-        // bump positions >= desired
-        const bumped = sorted.map((r) =>
-          r.position >= desired ? { ...r, position: r.position + 1 } : r
-        );
+      utils.row.list.setInfiniteData(key, (data) => {
+        // no pages yet? create a first page shell
+        if (!data || data.pages.length === 0) {
+          return {
+            pages: [
+              {
+                rows: [
+                  { id: tempRowId, position: desired, createdAt: now, updatedAt: now },
+                ],
+                cells: emptyCells,
+                hasMore: false,
+                nextSkip: 0,
+              } as RowPage,
+            ],
+            pageParams: [null],
+          };
+        }
 
-        // insert temp row at desired pos
-        const newRow = {
-          id: tempRowId,
-          tableId,
-          position: desired,
-          createdAt: now,
-          updatedAt: now,
+        // bump positions everywhere
+        const next = bumped(data);
+
+        // insert into chosen page
+        const idx = pickPageIndex();
+        const page = next!.pages[idx]!;
+        const rows = [
+          ...page.rows,
+          { id: tempRowId, position: desired, createdAt: now, updatedAt: now }
+        ].sort((a, b) => a.position - b.position);
+
+        const newPage: RowPage = {
+          ...page,
+          rows,
+          cells: [...page.cells, ...emptyCells],
+          hasMore: page.hasMore ?? false,
+          nextSkip: page.nextSkip ?? 0,
         };
 
-        const rows = [...bumped, newRow].sort((a, b) => a.position - b.position);
-
-        // add empty cells for all columns for the new temp row
-        const addCells = cols.map((c) => ({
-          rowId: tempRowId,
-          columnId: c.id,
-          textValue: null,
-          numberValue: null,
-          createdAt: now,
-          updatedAt: now,
-        }));
-
-        const next: RowList = {
-          rows,
-          cells: [...base.cells, ...addCells],
-          hasMore: base.hasMore,
-          nextSkip: base.nextSkip,
-        } as RowList;
-        return next;
+        next!.pages = next!.pages.map((p, i) => (i === idx ? newPage : p));
+        return next!;
       });
 
-      return { previous, tempRowId };
+      return { prev, tempRowId };
     },
-    // If server fails, roll back cache
     onError: (_e, _v, ctx) => {
-      if (ctx?.previous) utils.row.list.setData(key, ctx.previous);
+      if (ctx?.prev) utils.row.list.setInfiniteData(key, ctx.prev);
     },
-
-    // replace optimistic id with real id returned by the server
-    onSuccess: (data, _v, ctx) => {
-      const realId = (data as { id: string } | undefined)?.id;
-      if (!realId || !ctx?.tempRowId) return;
-
-      utils.row.list.setData(key, (old) => {
-        if (!old) return old;
-        return {
-          rows: old.rows.map((r) => 
-            (r.id === ctx.tempRowId ? { ...r, id: realId } : r)
-          ),
-          cells: old.cells.map((c) => 
-            (c.rowId === ctx.tempRowId ? { ...c, rowId: realId } : c)
-          ),
-        } as typeof old;
-      });
+    onSuccess: (row, _v, ctx) => {
+      const realId = (row as { id: string } | undefined)?.id;
+      if (!realId) return;
+      utils.row.list.setInfiniteData(key, (data) =>
+        mapInfinitePages(data, (page) => ({
+          ...page,
+          rows: page.rows.map((r) => (r.id === ctx?.tempRowId ? { ...r, id: realId } : r)),
+          cells: page.cells.map((c) => (c.rowId === ctx?.tempRowId ? { ...c, rowId: realId } : c)),
+          hasMore: page.hasMore ?? false,
+          nextSkip: page.nextSkip ?? 0,
+        }))
+      );
     },
-    onSettled: () => void rowsQ.refetch()
+    onSettled: () => {
+      void utils.row.list.invalidate(key);
+    },
   });
 
+  // helpers that compute target positions using infinite cache
+  const getRowPosition = (rowId: string) => {
+    const data = utils.row.list.getInfiniteData(key);
+    for (const p of data?.pages ?? []) {
+      const found = p.rows.find((r) => r.id === rowId);
+      if (found) return found.position;
+    }
+    return 0;
+  };
+
   const insertAtEnd = () => {
-    insertRow.mutate({ tableId, position: getEndPosition() });
+    const data = utils.row.list.getInfiniteData(key);
+    let maxPos = -1;
+    for (const p of data?.pages ?? []) for (const r of p.rows) if (r.position > maxPos) maxPos = r.position;
+    insertRow.mutate({ tableId, position: maxPos + 1 });
   };
 
-  const insertAbove = (rowIndex: number) => {
-    const list = utils.row.list.getData(key);
-    const pos = list?.rows?.[rowIndex]?.position ?? rowIndex;
-    insertRow.mutate({ tableId, position: pos });
+  const insertAbove = (rowId: string) => {
+    insertRow.mutate({ tableId, position: getRowPosition(rowId) });
   };
 
-  const insertBelow = (rowIndex: number) => {
-    const list = utils.row.list.getData(key);
-    const pos = (list?.rows?.[rowIndex]?.position ?? rowIndex) + 1;
-    insertRow.mutate({ tableId, position: pos });
+  const insertBelow = (rowId: string) => {
+    insertRow.mutate({ tableId, position: getRowPosition(rowId) + 1 });
   };
 
   return { insertRow, insertAtEnd, insertAbove, insertBelow };
 }
 
-export function useOptimisticDeleteRow(tableId: string, viewId?: string) {
+export function useOptimisticDeleteRow(
+  tableId: string,
+  viewId?: string,
+  take = 200
+) {
   const utils = api.useUtils();
-  const listKey = { tableId, viewId, skip: 0 } as const;
-  const rowsQ = api.row.list.useQuery(listKey);
+  const key = { tableId, viewId, take } as const;
 
   const del = api.row.delete.useMutation({
-    onMutate: async ({ rowId }: { rowId: string }) => {
-      await utils.row.list.cancel(listKey);
-      const previous = utils.row.list.getData(listKey);
+    async onMutate({ rowId }: { rowId: string }) {
+      await utils.row.list.cancel(key);
+      const prev = utils.row.list.getInfiniteData(key);
 
-      utils.row.list.setData(listKey, (old) => {
-        if (!old) return old;
-        const removed = old.rows.find((r) => r.id === rowId);
-        const afterPos = removed?.position ?? Number.MAX_SAFE_INTEGER;
-        return {
-          rows: old.rows
+      // find position to decrement rows after
+      let removedPos = Number.MAX_SAFE_INTEGER;
+      for (const p of prev?.pages ?? []) {
+        const found = p.rows.find((r) => r.id === rowId);
+        if (found) { removedPos = found.position; break; }
+      }
+
+      utils.row.list.setInfiniteData(key, (data) =>
+        mapInfinitePages(data, (page) => ({
+          ...page,
+          rows: page.rows
             .filter((r) => r.id !== rowId)
-            .map((r) => (r.position > afterPos ? { ...r, position: r.position - 1 } : r)),
-          cells: old.cells.filter((c) => c.rowId !== rowId),
-          hasMore: old.hasMore,
-          nextSkip: old.nextSkip,
-        } as RowList;
-      });
+            .map((r) => (r.position > removedPos ? { ...r, position: r.position - 1 } : r)),
+          cells: page.cells.filter((c) => c.rowId !== rowId),
+          hasMore: page.hasMore ?? false,
+          nextSkip: page.nextSkip ?? 0,
+        }))
+      );
 
-      return { previous };
+      return { prev };
     },
     onError: (_e, _v, ctx) => {
-      if (ctx?.previous) utils.row.list.setData(listKey, ctx.previous);
+      if (ctx?.prev) utils.row.list.setInfiniteData(key, ctx.prev);
     },
-    onSettled: () => { void rowsQ.refetch(); },
+    onSettled: () => {
+      void utils.row.list.invalidate(key);
+    },
   });
 
   const deleteById = (rowId: string) => del.mutate({ rowId });
-
-  const deleteByIndex = (rowIndex: number) => {
-    const list = utils.row.list.getData(listKey);
-    const rowId = list?.rows?.[rowIndex]?.id;
-    if (rowId) del.mutate({ rowId });
-  };
-
-  return { deleteById, deleteByIndex };
+  return { deleteById };
 }
 
 export function useOptimisticUpdateCell(
   tableId: string,
-  viewId?: string
+  viewId?: string,
+  take = 200
 ) {
   const utils = api.useUtils();
-  const key = { tableId, viewId, skip: 0 } as const;
+  const key = { tableId, viewId, take } as const;
 
   const updateCell = api.row.updateCell.useMutation({
-    onMutate: async ({ rowId, columnId, textValue, numberValue }) => {
-      await utils.row.list.cancel(key);                
-      const previousData = utils.row.list.getData(key);
+    async onMutate({ rowId, columnId, textValue, numberValue }) {
+      await utils.row.list.cancel(key);
+      const prev = utils.row.list.getInfiniteData(key);
 
-      if (previousData) {
-        const next: RowList = {
-          ...previousData, 
-          cells: previousData.cells.map((cell) =>
-            cell.rowId === rowId && cell.columnId === columnId
-              ? {
-                  ...cell,
-                  textValue: textValue !== undefined ? textValue : cell.textValue,
-                  numberValue: numberValue !== undefined ? numberValue : cell.numberValue,
-                }
-              : cell
-          ),
-        } as RowList;
-        utils.row.list.setData(key, next);
-      }
+      // update the cell in-place across all pages that contain it
+      utils.row.list.setInfiniteData(key, (data) =>
+        mapInfinitePages(data, (page) => {
+          // If this is an empty page, just return it as-is
+          if (page.rows.length === 0) return page;
+          const hasRow = page.rows.some((r) => r.id === rowId);
+          if (!hasRow) return page;
+          return {
+            ...page,
+            cells: page.cells.map((c) =>
+              c.rowId === rowId && c.columnId === columnId
+                ? {
+                    ...c,
+                    textValue:
+                      textValue !== undefined ? textValue : c.textValue,
+                    numberValue:
+                      numberValue !== undefined ? numberValue : c.numberValue,
+                  }
+                : c
+            ),
+          } as typeof page;
+        })
+      );
 
-      return { previousData };
+      return { prev };
     },
-
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.previousData) utils.row.list.setData(key, ctx.previousData);
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prev) utils.row.list.setInfiniteData(key, ctx.prev);
     },
-
     onSettled: () => {
-      // refresh current view
       void utils.row.list.invalidate(key);
-      // optional: also mark all other views stale so switching will fetch fresh
-      void utils.row.list.invalidate(); 
     },
   });
 
@@ -266,57 +313,67 @@ export function useOptimisticUpdateCell(
 
 export function useOptimisticAddColumn(
   tableId: string,
+  viewId?: string,
+  take = 200,
   opts?: { onOptimisticApplied?: () => void }
 ) {
   const utils = api.useUtils();
+
+  // keys that this mutation touches
   const colKey = { tableId } as const;
-  const rowKey = { tableId, skip: 0 } as const;
+  const infKey = { tableId, viewId, take } as const;
 
   return api.column.add.useMutation({
     // Optimistic add
     onMutate: async (vars) => {
-      // Cancel so our writes aren't overwritten by in-flight refetches
+      // Stop in-flight refetches from stomping our optimistic writes
       await Promise.all([
         utils.column.listByTable.cancel(colKey),
-        utils.row.list.cancel(rowKey),
+        utils.row.list.cancel(infKey), // cancel infinite query
       ]);
 
       // Snapshots for rollback
       const previousCols = utils.column.listByTable.getData(colKey);
-      const previousRows = utils.row.list.getData(rowKey);
+      const previousInf = utils.row.list.getInfiniteData(infKey);
 
       const tempId = `optimistic-col-${Date.now()}`;
       const now = new Date();
 
-      // 1) Optimistically insert the column
+      // 1) Optimistically insert the column in the columns list
       utils.column.listByTable.setData(colKey, (old) => {
-        const current = (old ?? []);
-
-        // clamp desired index; default to append when not provided
+        const current = old ?? [];
         const desired =
-          typeof (vars).position === "number" 
-            ? Math.max(0, Math.min((vars).position, current.length))
+          typeof vars.position === "number"
+            ? Math.max(0, Math.min(vars.position, current.length))
             : current.length;
 
-        // build new array with the temp column inserted
         const next = [
           ...current.slice(0, desired),
-          { id: tempId, name: vars.name, type: vars.type, position: desired } as ColumnItem,
+          {
+            id: tempId,
+            name: vars.name,
+            type: vars.type,
+            position: desired,
+            width: 180,
+          } as ColumnItem,
           ...current.slice(desired),
-        ].map((c, idx) => ({ ...c, position: idx })); // reindex positions
+        ].map((c, idx) => ({ ...c, position: idx }));
 
         return next;
       });
 
-      // 2) Optimistically add empty cells for existing rows
-      if (previousRows) {
-        utils.row.list.setData(rowKey, (old) => {
-          if (!old) return old;
+      // 2) Optimistically add empty cells for this new column
+      //    to every already-loaded page in the infinite rows cache.
+      utils.row.list.setInfiniteData(infKey, (data) =>
+        mapInfinitePages<RowPage, number | null>(data, (page) => {
+          if (!page || page.rows.length === 0) return page;
+          const hasAny = page.cells.some(c => c.columnId === tempId);
+          if (hasAny) return page;
           return {
-            ...old,
+            ...page,
             cells: [
-              ...old.cells,
-              ...old.rows.map((r) => ({
+              ...page.cells,
+              ...page.rows.map((r) => ({
                 rowId: r.id,
                 columnId: tempId,
                 textValue: null,
@@ -325,47 +382,50 @@ export function useOptimisticAddColumn(
                 updatedAt: now,
               })),
             ],
-          } as RowList;
-        });
-      }
+            hasMore: page.hasMore ?? false,
+            nextSkip: page.nextSkip ?? 0,
+          };
+        })
+      );
 
-      // Let the caller (the button) close/reset its UI immediately
+      // Let the caller (e.g., AddFieldButton) close/reset its UI immediately
       opts?.onOptimisticApplied?.();
 
-      return { colKey, rowKey, previousCols, previousRows, tempId };
+      return { colKey, infKey, previousCols, previousInf, tempId };
     },
 
+    // Swap temp id -> real id everywhere
     onSuccess: ({ id }, _vars, ctx) => {
       if (!ctx) return;
 
-      // Swap temp id -> real id in both places
       utils.column.listByTable.setData(ctx.colKey, (old) =>
         old?.map((c) => (c.id === ctx.tempId ? { ...c, id } : c))
       );
 
-      utils.row.list.setData(ctx.rowKey, (old) => {
-        if (!old) return old;
-        return {
-          ...old,
-          cells: old.cells.map((cell) =>
+      utils.row.list.setInfiniteData(ctx.infKey, (data) =>
+        mapInfinitePages<RowPage, number | null>(data, (page) => ({
+          ...page,
+          cells: page.cells.map((cell) =>
             cell.columnId === ctx.tempId ? { ...cell, columnId: id } : cell
           ),
-        } as RowList;
-      });
+          hasMore: page.hasMore ?? false,
+          nextSkip: page.nextSkip ?? 0,
+        }))
+      );
     },
 
     // rollback on error
     onError: (_err, _vars, ctx) => {
       if (!ctx) return;
       utils.column.listByTable.setData(ctx.colKey, ctx.previousCols);
-      utils.row.list.setData(ctx.rowKey, ctx.previousRows);
+      utils.row.list.setInfiniteData(ctx.infKey, ctx.previousInf);
     },
 
     // Final sync
     onSettled: async () => {
       await Promise.all([
         utils.column.listByTable.invalidate(colKey),
-        utils.row.list.invalidate(rowKey),
+        utils.row.list.invalidate(infKey),
       ]);
     },
   });
@@ -406,4 +466,42 @@ export function useRowHeight(tableId: string) {
   };
 
   return { rowHeight, setRowHeight };
+}
+
+export function useInfiniteRows(params: {
+  tableId: string;
+  viewId?: string;
+  take?: number; 
+}) {
+  const { tableId, viewId, take = 200 } = params;
+
+  const query = api.row.list.useInfiniteQuery(
+    { tableId, viewId, take },
+    {
+      getNextPageParam: (last) => (last?.hasMore ? last.nextSkip : undefined),
+      refetchOnWindowFocus: false,
+      staleTime: 0,
+    }
+  );
+
+  // shape into your existing CellRecord[] (rows + cells)
+  const flatRecords: CellRecord[] = useMemo(() => {
+    const pages = query.data?.pages ?? [];
+    const out = new Map<string, CellRecord>();
+
+    for (const page of pages) {
+      const map = new Map<string, CellRecord>();
+      page.rows.forEach((r) => map.set(r.id, { rowId: r.id }));
+      page.cells.forEach((c) => {
+        const target = map.get(c.rowId);
+        if (target) target[c.columnId] = c.textValue ?? c.numberValue ?? null;
+      });
+      // append in order
+      for (const rec of map.values()) out.set(rec.rowId, rec);
+    }
+
+    return Array.from(out.values());
+  }, [query.data?.pages]);
+
+  return { ...query, records: flatRecords };
 }

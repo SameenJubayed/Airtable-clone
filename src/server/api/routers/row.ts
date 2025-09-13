@@ -152,7 +152,7 @@ export const rowRouter = createTRPCRouter({
         viewId: z.string().cuid().optional(),
         skip: z.number().int().min(0).default(0),
         cursor: z.number().int().min(0).optional(),
-        take: z.number().int().min(1).max(200).default(200),
+        take: z.number().int().min(1).max(500).default(200),
       }),
     )
     .query(async ({ input, ctx }) => {
@@ -301,6 +301,8 @@ export const rowRouter = createTRPCRouter({
           ORDER BY ${Prisma.join(orderByParts, ", ")}, r."position" ASC
         `;
       }
+      
+      const skip = input.cursor ?? input.skip ?? 0;
 
       const rows = await ctx.db.$queryRaw<
         { id: string; position: number; createdAt: Date; updatedAt: Date }[]
@@ -309,7 +311,7 @@ export const rowRouter = createTRPCRouter({
         FROM "Row" r
         WHERE ${Prisma.join(where, " AND ")}
         ${orderBy}
-        OFFSET ${Prisma.raw(String(input.skip))}
+        OFFSET ${Prisma.raw(String(skip))}
         LIMIT  ${Prisma.raw(String(input.take))}
       `);
 
@@ -324,7 +326,7 @@ export const rowRouter = createTRPCRouter({
         WHERE "rowId" IN (${rowIdsSql})
       `);
 
-      const skip = input.cursor ?? input.skip ?? 0;
+
       if (rows.length === 0) {
         return { rows: [], cells: [], hasMore: false, nextSkip: skip };
       }

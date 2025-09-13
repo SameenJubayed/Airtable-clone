@@ -12,12 +12,14 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { api } from "~/trpc/react";
 
 type MakeColsArgs = {
-  columnsData: { id: string; name: string; type: "TEXT" | "NUMBER"; width: number }[] | undefined;
+  columnsData: { id: string; name: string; type: "TEXT" | "NUMBER"; width: number; position?: number }[] | undefined;
   editingKey: EditingKey;
   setEditingKey: (k: EditingKey) => void;
   updateCell: ReturnType<typeof api.row.updateCell.useMutation>;
   tableId?: string;
   matchSet?: Set<string>;
+  viewId?: string;    
+  pageTake: number
 };
 
 export function useRowNumberColumn(): ColumnDef<CellRecord, unknown> {
@@ -26,7 +28,7 @@ export function useRowNumberColumn(): ColumnDef<CellRecord, unknown> {
       id: "__rownum",
       header: () => <span className="text-gray-500 flex items-center justify-center">#</span>,
       size: ROWNUM_W,
-      maxSize: ROWNUM_W,
+      maxSize: 60,
       enableResizing: false,
       cell: (ctx) => (
         <div className="
@@ -45,17 +47,21 @@ export function useRowNumberColumn(): ColumnDef<CellRecord, unknown> {
   );
 }
 
-function HeaderWithMenu({tableId, col, position}: {
+function HeaderWithMenu({
+  tableId,
+  viewId,       
+  pageTake,       
+  col,
+  position,
+}: {
   tableId: string;
+  viewId?: string; 
+  pageTake: number; 
   col: { id: string; name: string; type: "TEXT" | "NUMBER" };
   position: number;
 }) {
   const utils = api.useUtils();
   const del = api.column.delete.useMutation();
-
-  const addColumn = useOptimisticAddColumn(tableId, {
-    onOptimisticApplied: () => setEditor(null),
-  });
 
   const ref = useRef<HTMLDivElement | null>(null);
   const [hover, setHover] = useState(false);
@@ -68,6 +74,13 @@ function HeaderWithMenu({tableId, col, position}: {
         initial?: { columnId?: string; name?: string; type?: "TEXT" | "NUMBER"; position?: number };
       }
   >(null);
+
+  const addColumn = useOptimisticAddColumn(
+    tableId,
+    viewId,
+    pageTake,
+    { onOptimisticApplied: () => setEditor(null) }
+  );
 
   const rect = ref.current?.getBoundingClientRect() ?? null;
 
@@ -106,14 +119,21 @@ function HeaderWithMenu({tableId, col, position}: {
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
         anchorRect={rect}
-        // column={{ ...col, position }}
-        onEdit={() => setEditor({ mode: "edit", align: "leftEdge" })}
+        onEdit={() =>
+          setEditor({
+            mode: "edit",
+            align: "leftEdge",
+            initial: { columnId: col.id, name: col.name, type: col.type, position }
+          })
+        }
         onInsertLeft={() => setEditor({ mode: "create", align: "leftEdge", initial: { position } })}
         onInsertRight={() => setEditor({ mode: "create", align: "leftAtRightEdge", initial: { position: position + 1 } })}
         onDelete={async () => {
           await del.mutateAsync({ columnId: col.id });
           await utils.column.listByTable.invalidate({ tableId });
-          await utils.row.list.invalidate({ tableId, skip: 0 });
+          await utils.row.list.invalidate({ tableId, viewId, take: pageTake });
+          utils.row.list.setInfiniteData({ tableId, viewId, take: pageTake }, undefined);
+          await utils.row.list.invalidate({ tableId, viewId, take: pageTake });
         }}
         // Optional stubs (wire when you implement)
         onDuplicate={undefined}
@@ -126,6 +146,8 @@ function HeaderWithMenu({tableId, col, position}: {
       {editor && (
         <FieldEditorPopover
           tableId={tableId}
+          viewId={viewId}
+          pageTake={pageTake}
           open
           onClose={() => setEditor(null)}
           anchorEl={ref.current} // ⟵ anchor to real element (autoUpdate will follow)
@@ -155,140 +177,141 @@ export function useDynamicColumns({
   updateCell,
   tableId = "",
   matchSet,
+  viewId,            
+  pageTake,          
 }: MakeColsArgs) {
   return useMemo<ColumnDef<CellRecord, unknown>[]>(() => {
     if (!columnsData) return [];
-    return columnsData.map((col, idx) => ({
-      id: col.id,
-      header: () => (
-        <HeaderWithMenu
-          tableId={tableId}
-          col={{ id: col.id, name: col.name, type: col.type }}
-          position={idx}
-        />
-      ),
-      // tell TanStack to read row[col.id] for this column's value
-      accessorKey: col.id,
-      // defaul col width 180
-      size: col.width ?? COL_W,
-      // min possible size 60
-      minSize: MIN_COL_W,
-      meta: (idx === 0
-        ? { tdClassName: "border-l-0", thClassName: "border-l-0" }
-        : {}) as ColMeta,
+    return columnsData.map((col, idx) => {
+      // prefer server position unless we dont have
+      const position = typeof col.position === "number" ? col.position : idx;
+      return {
+        id: col.id,
+        header: () => (
+          <HeaderWithMenu
+            tableId={tableId}
+            viewId={viewId ?? undefined}    
+            pageTake={pageTake}             
+            col={{ id: col.id, name: col.name, type: col.type }}
+            position={position}
+          />
+        ),
+        accessorKey: col.id,
+        size: col.width ?? COL_W,
+        minSize: MIN_COL_W,
+        meta: (idx === 0
+          ? { tdClassName: "border-l-0", thClassName: "border-l-0" }
+          : {}) as ColMeta,
 
-      cell: (ctx) => {        
-        const rowId = ctx.row.original.rowId;
-        const columnId = col.id;
-        const value = ctx.getValue() as string | number | null | undefined;
-        const ek = editingKey;
-        const isEditing = ek?.rowId === rowId && ek?.columnId === columnId;
+        cell: (ctx) => {
+          const rowId = ctx.row.original.rowId;
+          const columnId = col.id;
+          const value = ctx.getValue() as string | number | null | undefined;
+          const ek = editingKey;
+          const isEditing = ek?.rowId === rowId && ek?.columnId === columnId;
 
-        if (!isEditing) {
-          const text = value == null ? "" : String(value);
-          const isMatch = matchSet?.has(`${rowId}|${columnId}`) ?? false;
-          
-          const rowIndex = ctx.row.index;
-          const colIndex = ctx.column.getIndex();
+          if (!isEditing) {
+            const text = value == null ? "" : String(value);
+            const isMatch = matchSet?.has(`${rowId}|${columnId}`) ?? false;
 
-          const move = (dx: number, dy: number) => {
-            const colCount = ctx.table.getVisibleLeafColumns().length;
-            const rowCount = ctx.table.getRowModel().rows.length;
-            const nextCol = Math.max(0, Math.min(colIndex + dx, colCount - 1));
-            const nextRow = Math.max(0, Math.min(rowIndex + dy, rowCount - 1));
-            if (nextCol !== colIndex || nextRow !== rowIndex) {
-              const el = document.querySelector<HTMLElement>(
-                `[data-cell="1"][data-rowindex="${nextRow}"][data-colindex="${nextCol}"]`
-              );
-              el?.focus();
-              el?.scrollIntoView({ block: "nearest", inline: "nearest" });
-            }
-          };
+            const rowIndex = ctx.row.index;
+            const colIndex = ctx.column.getIndex();
+
+            const move = (dx: number, dy: number) => {
+              const colCount = ctx.table.getVisibleLeafColumns().length;
+              const rowCount = ctx.table.getRowModel().rows.length;
+              const nextCol = Math.max(0, Math.min(colIndex + dx, colCount - 1));
+              const nextRow = Math.max(0, Math.min(rowIndex + dy, rowCount - 1));
+              if (nextCol !== colIndex || nextRow !== rowIndex) {
+                const el = document.querySelector<HTMLElement>(
+                  `[data-cell="1"][data-rowindex="${nextRow}"][data-colindex="${nextCol}"]`
+                );
+                el?.focus();
+                el?.scrollIntoView({ block: "nearest", inline: "nearest" });
+              }
+            };
+
+            return (
+              <div
+                data-cell="1"
+                data-rowindex={rowIndex}
+                data-colindex={colIndex}
+                role="gridcell"
+                tabIndex={0}
+                title={text}
+                onClick={(e) => (e.currentTarget as HTMLDivElement).focus()}
+                onDoubleClick={() => setEditingKey({ rowId, columnId })}
+                onKeyDown={(e) => {
+                  if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+                    if (e.key === "Backspace" || e.key === "Delete" || e.key.length === 1) {
+                      e.preventDefault();
+                      setEditingKey({ rowId, columnId, prefill: e.key.length === 1 ? e.key : "" });
+                      return;
+                    }
+                  }
+                  if (e.key === "ArrowRight") { e.preventDefault(); move(1, 0); }
+                  else if (e.key === "ArrowLeft") { e.preventDefault(); move(-1, 0); }
+                  else if (e.key === "ArrowDown") { e.preventDefault(); move(0, 1); }
+                  else if (e.key === "ArrowUp") { e.preventDefault(); move(0, -1); }
+                  else if (e.key === "Tab") { e.preventDefault(); move(e.shiftKey ? -1 : 1, 0); }
+                }}
+                className={[
+                  "w-full h-8 px-3 flex items-center whitespace-nowrap overflow-hidden text-ellipsis",
+                  "focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-default",
+                  isMatch ? "bg-orange-100/70 ring-1 ring-orange-300" : ""
+                ].join(" ")}
+              >
+                {text}
+              </div>
+            );
+          }
+
+          const initial = ek?.prefill ?? (value == null ? "" : String(value));
+          const type = col.type;
 
           return (
-            <div
-              data-cell="1"
-              data-rowindex={rowIndex}
-              data-colindex={colIndex}
-              role="gridcell"
-              tabIndex={0}
-              title={text}
-              onClick={(e) => (e.currentTarget as HTMLDivElement).focus()}
-              onDoubleClick={() => setEditingKey({ rowId, columnId })}
-              onKeyDown={(e) => {
-                // type-to-replace
-                if (!e.ctrlKey && !e.metaKey && !e.altKey) {
-                  if (e.key === "Backspace" || e.key === "Delete" || e.key.length === 1) {
-                    e.preventDefault();
-                    setEditingKey({ rowId, columnId, prefill: e.key.length === 1 ? e.key : "" });
-                    return;
-                  }
+            <input
+              autoFocus
+              type={type === "NUMBER" ? "number" : "text"}
+              defaultValue={initial}
+              className="
+                absolute inset-0 block w-full h-full box-border 
+                px-3 
+                outline-none border-0 ring-1 ring-inset ring-gray-300 
+                focus:ring-2 focus:ring-indigo-500 
+                rounded-none bg-white
+              "
+              onBlur={(e) => {
+                const raw = e.currentTarget.value;
+                setEditingKey(null);
+
+                if (type === "NUMBER") {
+                  const num = raw === "" ? null : Number(raw);
+                  updateCell.mutate({
+                    rowId,
+                    columnId,
+                    numberValue: Number.isNaN(num) ? null : num,
+                  });
+                } else {
+                  const txt = raw;
+                  updateCell.mutate({
+                    rowId,
+                    columnId,
+                    textValue: txt === "" ? null : txt,
+                  });
                 }
-                // navigation
-                if (e.key === "ArrowRight") { e.preventDefault(); move(1, 0); }
-                else if (e.key === "ArrowLeft") { e.preventDefault(); move(-1, 0); }
-                else if (e.key === "ArrowDown") { e.preventDefault(); move(0, 1); }
-                else if (e.key === "ArrowUp") { e.preventDefault(); move(0, -1); }
-                else if (e.key === "Tab") { e.preventDefault(); move(e.shiftKey ? -1 : 1, 0); }
               }}
-              className={[
-                "w-full h-8 px-3 flex items-center whitespace-nowrap overflow-hidden text-ellipsis",
-                "focus:outline-none focus:ring-2 focus:ring-indigo-500/50 cursor-default",
-                isMatch ? "bg-orange-100/70 ring-1 ring-orange-300" : ""
-              ].join(" ")}
-            >
-              {text}
-            </div>
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === "Escape") {
+                  (e.target as HTMLInputElement).blur();
+                }
+              }}
+            />
           );
-        }
-
-        // In edit mode: keep your existing input behavior
-        const initial = ek?.prefill ?? (value == null ? "" : String(value));
-
-        const type = col.type;
-
-        return (
-          <input
-            autoFocus
-            type={type === "NUMBER" ? "number" : "text"}
-            defaultValue={initial}
-            className="
-              absolute inset-0 block w-full h-full box-border 
-              px-3 
-              outline-none border-0 ring-1 ring-inset ring-gray-300 
-              focus:ring-2 focus:ring-indigo-500 
-              rounded-none bg-white
-            "
-            onBlur={(e) => {
-              const raw = e.currentTarget.value;
-              setEditingKey(null);
-
-              if (type === "NUMBER") {
-                const num = raw === "" ? null : Number(raw);
-                updateCell.mutate({
-                  rowId,
-                  columnId,
-                  numberValue: Number.isNaN(num) ? null : num,
-                });
-              } else {
-                const txt = raw; // keep spaces; user is replacing intentionally
-                updateCell.mutate({
-                  rowId,
-                  columnId,
-                  textValue: txt === "" ? null : txt,
-                });
-              }
-            }}
-            onKeyDown={(e) => {
-              // keep your current commit/cancel
-              if (e.key === "Enter" || e.key === "Escape") {
-                (e.target as HTMLInputElement).blur();
-              }
-            }}
-          />
-        );
-      },
-    }));
-  }, [columnsData, editingKey, setEditingKey, updateCell, tableId, matchSet]);
+        },
+      } as ColumnDef<CellRecord, unknown>;
+    });
+  // include viewId/pageTake so headers rebind if they change
+  }, [columnsData, editingKey, setEditingKey, updateCell, tableId, matchSet, viewId, pageTake]);
 }
 

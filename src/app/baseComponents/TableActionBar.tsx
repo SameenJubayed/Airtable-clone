@@ -16,7 +16,7 @@ import ProgressOverlay from "./grid/ProgressOverlay";
 import { useViews } from "./ViewsLayout";
 
 import { api } from "~/trpc/react";
-import { COL_W, ROW_H, ROW_H_MED, ROW_H_TALL, ROW_H_XT } from "./grid/constants";
+import { COL_W, ROW_H, ROW_H_MED, ROW_H_TALL, ROW_H_XT, PAGE_TAKE } from "./grid/constants";
 
 // MUI ICONS
 import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined';
@@ -292,7 +292,8 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
               anchorEl={filterBtnRef.current}
               columns={(columnsQ.data ?? []).map(c => ({ id: c.id, name: c.name, type: c.type }))}
               tableId={tableId}
-              viewId={activeViewId}              
+              viewId={activeViewId}  
+              pageTake={PAGE_TAKE}            
             />
 
             <button className={topBtnClass()} title="Group" aria-label="Group">
@@ -320,6 +321,7 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
               tableId={tableId}
               viewId={activeViewId}
               columns={(columnsQ.data ?? []).map(c => ({ id: c.id, name: c.name, type: c.type }))}
+              pageTake={PAGE_TAKE}
             />
 
             <button className={topBtnClass()} title="Color" aria-label="Color">
