@@ -92,19 +92,22 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
     return (d.inserted / d.total) * 100;
   })();
 
-  useEffect(() => {
-    if (!jobId) return;
-    const s = statusQ.data?.status;
-    if (s === "done") {
-      setJobId(null);
-      // refresh first page; infinite scroll will be added in Phase 2
-      void utils.row.list.invalidate();
-    }
-    if (s === "error") {
-      console.error("Bulk insert error:", statusQ.data?.error);
-      setJobId(null);
-    }
-  }, [jobId, statusQ.data, utils.row.list]);
+useEffect(() => {
+  if (!jobId) return;
+  const s = statusQ.data?.status;
+  if (s === "done") {
+    setJobId(null);
+
+    // target the active grid only
+    const key = { tableId, viewId: activeViewId ?? undefined, take: PAGE_TAKE } as const;
+    utils.row.list.setInfiniteData(key, undefined); // drop pages, avoids thrash
+    void utils.row.list.invalidate(key); // single refetch
+  }
+  if (s === "error") {
+    console.error("Bulk insert error:", statusQ.data?.error);
+    setJobId(null);
+  }
+}, [jobId, statusQ.data, tableId, activeViewId, utils.row.list]);
 
   ////////////////////// HIDE MENU + STATE /////////////////////////////////////
   const [hideOpen, setHideOpen] = useState(false);
@@ -228,7 +231,7 @@ export default function BaseGrid({ tableId }: { tableId: string }) {
               aria-label="100k rows"
               onClick={async () => {
                 try {
-                  const { jobId } = await startBulk.mutateAsync({ tableId, total: 100_000, batchSize: 10_000 });
+                  const { jobId } = await startBulk.mutateAsync({ tableId, total: 10_000, batchSize: 1_000 });
                   setJobId(jobId);
                 } catch (e) {
                   console.error(e);

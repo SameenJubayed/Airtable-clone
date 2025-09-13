@@ -8,6 +8,8 @@ import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 
 // ---------------- FOR BULK INSERTING (100k holy moly) ----------------
 
+// ---------------- FOR BULK INSERTING (100k holy moly) ----------------
+
 async function runBulkInsertWorker(opts: {
   prisma: PrismaClient;
   jobId: string;
@@ -17,18 +19,28 @@ async function runBulkInsertWorker(opts: {
 }) {
   const { prisma, jobId, tableId, total, batchSize = 10_000 } = opts;
 
+  // ARRAY[...]::type[] helpers that keep values parameterized (safe & fast)
+  const arrayText = (xs: string[]) =>
+    Prisma.sql`ARRAY[${Prisma.join(xs.map(x => Prisma.sql`${x}`))}]::text[]`;
+
+  const arrayTextNullable = (xs: (string | null)[]) =>
+    Prisma.sql`ARRAY[${Prisma.join(xs.map(x => Prisma.sql`${x}`))}]::text[]`;
+
+  const arrayFloatNullable = (xs: (number | null)[]) =>
+    Prisma.sql`ARRAY[${Prisma.join(xs.map(x => Prisma.sql`${x}`))}]::double precision[]`;
+
   try {
     // mark running
     await prisma.bulkJob.update({ where: { id: jobId }, data: { status: "running" } });
 
-    // gather columns once
+    // We DO need columns now: we generate faker data based on each column's type.
     const cols = await prisma.column.findMany({
       where: { tableId },
       select: { id: true, type: true },
       orderBy: { position: "asc" },
     });
 
-    // find current max position to keep ordering stable
+    // current max position
     const agg = await prisma.row.aggregate({
       where: { tableId },
       _max: { position: true },
@@ -40,53 +52,57 @@ async function runBulkInsertWorker(opts: {
     while (inserted < total) {
       const size = Math.min(batchSize, total - inserted);
 
-      // Pre-generate row ids so we can bulk-create cells without extra reads
-      const now = new Date();
+      // Pre-generate row ids for this batch
       const rowIds: string[] = Array.from({ length: size }, () => cuid());
 
-      // 1) create rows in one batch
-      await prisma.row.createMany({
-        data: rowIds.map((id, k) => ({
-          id,
-          tableId,
-          position: nextPos + k,
-          createdAt: now,
-          updatedAt: now,
-        })),
-        skipDuplicates: true,
-      });
+      // Build cell payloads in memory for this batch
+      // NOTE: rows * columns items. Keep batchSize reasonable for big tables.
+      const cellRowIds: string[] = [];
+      const cellColumnIds: string[] = [];
+      const cellTextValues: (string | null)[] = [];
+      const cellNumberValues: (number | null)[] = [];
 
-      // 2) create cells in chunks to keep payloads reasonable
       if (cols.length > 0) {
-        const perChunk = 25_000; 
-        const allCells = new Array<{ 
-          rowId: string; 
-          columnId: string; 
-          textValue: string | null; 
-          numberValue: number | null; 
-          createdAt: Date; 
-          updatedAt: Date; 
-        }>(rowIds.length * cols.length);
-        let i = 0;
-
-        for (const rowId of rowIds) {
-          for (const c of cols) {
-            // fake data per column type
-            const text = c.type === "TEXT" ? faker.person.fullName() : null;
-            const num  = c.type === "NUMBER" ? faker.number.float({ min: 0, max: 100_000, fractionDigits: 2 }) : null;
-            allCells[i++] = {
-              rowId, columnId: c.id,
-              textValue: text, numberValue: num,
-              createdAt: now, updatedAt: now,
-            };
+        for (const rid of rowIds) {
+          for (const col of cols) {
+            cellRowIds.push(rid);
+            cellColumnIds.push(col.id);
+            if (col.type === "TEXT") {
+              cellTextValues.push(faker.person.fullName());
+              cellNumberValues.push(null);
+            } else {
+              // 2-decimal float in a range
+              const n = faker.number.float({ min: 0, max: 100_000, fractionDigits: 2 });
+              cellTextValues.push(null);
+              cellNumberValues.push(n);
+            }
           }
         }
-
-        for (let start = 0; start < allCells.length; start += perChunk) {
-          const slice = allCells.slice(start, start + perChunk);
-          await prisma.cell.createMany({ data: slice, skipDuplicates: true });
-        }
       }
+
+      await prisma.$transaction(async (tx) => {
+        // 1) Insert rows (one SQL)
+        // Use WITH ORDINALITY to produce 1..N and set position + orderKey = nextPos + ord - 1
+        await tx.$executeRaw(Prisma.sql`
+          INSERT INTO "Row" ("id","tableId","position","orderKey","createdAt","updatedAt")
+          SELECT r.rid, ${tableId}, ${nextPos} + r.ord - 1, ${nextPos} + r.ord - 1, NOW(), NOW()
+          FROM unnest(${arrayText(rowIds)}) WITH ORDINALITY AS r(rid, ord)
+        `);
+
+        // 2) Insert cells (one SQL) with faker-generated values
+        if (cols.length > 0 && cellRowIds.length > 0) {
+          await tx.$executeRaw(Prisma.sql`
+            INSERT INTO "Cell" ("rowId","columnId","textValue","numberValue","createdAt","updatedAt")
+            SELECT rid, cid, txt, num, NOW(), NOW()
+            FROM unnest(
+              ${arrayText(cellRowIds)},
+              ${arrayText(cellColumnIds)},
+              ${arrayTextNullable(cellTextValues)},
+              ${arrayFloatNullable(cellNumberValues)}
+            ) AS t(rid, cid, txt, num)
+          `);
+        }
+      });
 
       // advance counters
       nextPos += size;
@@ -109,6 +125,7 @@ async function runBulkInsertWorker(opts: {
     });
   }
 }
+
 
 const ViewFilterZ = z.object({
   columnId: z.string().cuid(),
@@ -277,7 +294,10 @@ export const rowRouter = createTRPCRouter({
       }
 
       // ORDER BY (keep your previous logic)
-      let orderBy: Prisma.Sql = Prisma.sql`ORDER BY r."position" ASC`;
+      const baseOrder = Prisma.sql`COALESCE(r."orderKey", r."position") ASC`;
+
+      let orderForWindow: Prisma.Sql = baseOrder; // used inside ROW_NUMBER()
+      let orderForSelect: Prisma.Sql = Prisma.sql`ORDER BY ${baseOrder}`; // final ORDER BY
 
       if (sorts.length) {
         const orderByParts: Prisma.Sql[] = [];
@@ -287,6 +307,7 @@ export const rowRouter = createTRPCRouter({
           const expr =
             s.type === "NUMBER" ? Prisma.sql`c."numberValue"` : Prisma.sql`c."textValue"`;
 
+          // same expression usable in both window order and final order
           orderByParts.push(Prisma.sql`
             (
               SELECT ${expr}
@@ -297,20 +318,25 @@ export const rowRouter = createTRPCRouter({
           `);
         }
 
-        orderBy = Prisma.sql`
-          ORDER BY ${Prisma.join(orderByParts, ", ")}, r."position" ASC
-        `;
+        // window + final order both include your sorts then fall back to dense key
+        orderForWindow = Prisma.sql`${Prisma.join(orderByParts, `, `)}, ${baseOrder}`;
+        orderForSelect = Prisma.sql`ORDER BY ${Prisma.join(orderByParts, `, `)}, ${baseOrder}`;
       }
-      
+
       const skip = input.cursor ?? input.skip ?? 0;
 
       const rows = await ctx.db.$queryRaw<
         { id: string; position: number; createdAt: Date; updatedAt: Date }[]
       >(Prisma.sql`
-        SELECT r.id, r."position", r."createdAt", r."updatedAt"
+        SELECT
+          r.id,
+          -- zero-based "position" synthesized from the same ORDER BY the page uses
+          ((ROW_NUMBER() OVER (ORDER BY ${orderForWindow}))::int - 1) AS "position",
+          r."createdAt",
+          r."updatedAt"
         FROM "Row" r
         WHERE ${Prisma.join(where, " AND ")}
-        ${orderBy}
+        ${orderForSelect}
         OFFSET ${Prisma.raw(String(skip))}
         LIMIT  ${Prisma.raw(String(input.take))}
       `);
@@ -375,48 +401,86 @@ export const rowRouter = createTRPCRouter({
    * Insert a row at an exact position (0-based).
    */
   insertAt: protectedProcedure
-    .input(
-      z.object({
-        tableId: z.string().cuid(),
-        position: z.number().int().min(0),
-      }),
-    )
+    .input(z.object({
+      tableId: z.string().cuid(),
+      position: z.number().int().min(0),
+    }))
     .mutation(async ({ input, ctx }) => {
+      // auth
       await ctx.db.table.findFirstOrThrow({
         where: { id: input.tableId, base: { createdById: ctx.session.user.id } },
         select: { id: true },
       });
 
-      await ctx.db.row.updateMany({
-        where: { tableId: input.tableId, position: { gte: input.position } },
-        data: { position: { increment: 1 } },
-      });
+      // Neighbor keys (orderKey or legacy position) at position-1 and position
+      const leftRes = await ctx.db.$queryRaw<{ k: Prisma.Decimal | null }[]>(Prisma.sql`
+        SELECT COALESCE("orderKey","position") AS k
+        FROM "Row"
+        WHERE "tableId" = ${input.tableId}
+        ORDER BY COALESCE("orderKey","position") ASC
+        OFFSET ${Prisma.raw(String(Math.max(0, input.position - 1)))} LIMIT 1
+      `);
 
-      const row = await ctx.db.row.create({
-        data: { tableId: input.tableId, position: input.position },
-        select: { id: true, position: true, createdAt: true },
-      });
+      const rightRes = await ctx.db.$queryRaw<{ k: Prisma.Decimal | null }[]>(Prisma.sql`
+        SELECT COALESCE("orderKey","position") AS k
+        FROM "Row"
+        WHERE "tableId" = ${input.tableId}
+        ORDER BY COALESCE("orderKey","position") ASC
+        OFFSET ${Prisma.raw(String(input.position))} LIMIT 1
+      `);
 
-      const columns = await ctx.db.column.findMany({
-        where: { tableId: input.tableId },
-        select: { id: true },
-        orderBy: { position: "asc" },
-      });
+      const leftK  = leftRes[0]?.k ?? null;
+      const rightK = rightRes[0]?.k ?? null;
 
-      if (columns.length) {
-        await ctx.db.cell.createMany({
-          data: columns.map((c) => ({
-            rowId: row.id,
-            columnId: c.id,
-            textValue: null,
-            numberValue: null,
-          })),
-          skipDuplicates: true,
-        });
+      // pick a new key between neighbors
+      const GAP = new Prisma.Decimal(1024);
+      let orderKey: Prisma.Decimal;
+
+      if (!leftK && !rightK) {
+        orderKey = new Prisma.Decimal(1_000_000);        // empty table
+      } else if (leftK && !rightK) {
+        orderKey = leftK.plus(GAP);   // append
+      } else if (!leftK && rightK) {
+        orderKey = rightK.minus(GAP); // prepend
+      } else {
+        orderKey = (leftK!).plus(rightK!).dividedBy(2); // midpoint
       }
+
+      // Create the row + empty cells (single txn)
+      const row = await ctx.db.$transaction(async (tx) => {
+        const created = await tx.row.create({
+          data: {
+            tableId: input.tableId,
+            position: 0,       // legacy, no longer used for ordering
+            orderKey,          // NEW
+          },
+          select: { id: true, createdAt: true, position: true },
+        });
+
+        const columns = await tx.column.findMany({
+          where: { tableId: input.tableId },
+          select: { id: true },
+          orderBy: { position: "asc" },
+        });
+
+        if (columns.length) {
+          await tx.cell.createMany({
+            data: columns.map((c) => ({
+              rowId: created.id,
+              columnId: c.id,
+              textValue: null,
+              numberValue: null,
+            })),
+            skipDuplicates: true,
+          });
+        }
+
+        return created;
+      });
 
       return row;
     }),
+
 
   /**
    * Update a single cell.

@@ -261,41 +261,47 @@ export function useOptimisticDeleteRow(
   return { deleteById };
 }
 
-export function useOptimisticUpdateCell(
-  tableId: string,
-  viewId?: string,
-  take = 200
-) {
+function makeThrottledInvalidate<T>(fn: (arg: T) => Promise<unknown>, ms = 750) {
+  let t: number | null = null, lastArgs: T | null = null;
+  return (args: T) => {
+    lastArgs = args;
+    if (t != null) return;
+    t = window.setTimeout(() => {
+      const a = lastArgs!;
+      lastArgs = null;
+      t = null;
+      void fn(a);
+    }, ms);
+  };
+}
+
+export function useOptimisticUpdateCell(tableId: string, viewId?: string, take = 200) {
   const utils = api.useUtils();
   const key = { tableId, viewId, take } as const;
+  const throttledInvalidate = useMemo(
+    () => makeThrottledInvalidate<typeof key>((args) => utils.row.list.invalidate(args)),
+    [utils] // depend on utils, not utils.row.list
+  );
 
   const updateCell = api.row.updateCell.useMutation({
     async onMutate({ rowId, columnId, textValue, numberValue }) {
       await utils.row.list.cancel(key);
       const prev = utils.row.list.getInfiniteData(key);
-
-      // update the cell in-place across all pages that contain it
       utils.row.list.setInfiniteData(key, (data) =>
         mapInfinitePages(data, (page) => {
-          // If this is an empty page, just return it as-is
-          if (page.rows.length === 0) return page;
-          const hasRow = page.rows.some((r) => r.id === rowId);
-          if (!hasRow) return page;
+          if (!page.rows.length) return page;
+          if (!page.rows.some(r => r.id === rowId)) return page;
           return {
             ...page,
-            cells: page.cells.map((c) =>
+            cells: page.cells.map(c =>
               c.rowId === rowId && c.columnId === columnId
-                ? {
-                    ...c,
-                    textValue:
-                      textValue !== undefined ? textValue : c.textValue,
-                    numberValue:
-                      numberValue !== undefined ? numberValue : c.numberValue,
+                ? { ...c,
+                    textValue: textValue !== undefined ? textValue : c.textValue,
+                    numberValue: numberValue !== undefined ? numberValue : c.numberValue
                   }
-                : c
-            ),
+                : c)
           } as typeof page;
-        })
+        }) 
       );
 
       return { prev };
@@ -303,9 +309,8 @@ export function useOptimisticUpdateCell(
     onError: (_e, _v, ctx) => {
       if (ctx?.prev) utils.row.list.setInfiniteData(key, ctx.prev);
     },
-    onSettled: () => {
-      void utils.row.list.invalidate(key);
-    },
+    // don’t invalidate immediately; throttle it
+    onSettled: () => throttledInvalidate(key),
   });
 
   return updateCell;
@@ -480,7 +485,8 @@ export function useInfiniteRows(params: {
     {
       getNextPageParam: (last) => (last?.hasMore ? last.nextSkip : undefined),
       refetchOnWindowFocus: false,
-      staleTime: 0,
+      staleTime: 15_000, 
+      gcTime: 5 * 60 * 1000,
     }
   );
 
@@ -505,3 +511,4 @@ export function useInfiniteRows(params: {
 
   return { ...query, records: flatRecords };
 }
+
