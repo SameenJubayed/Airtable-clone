@@ -33,7 +33,7 @@ export function DashboardShell({ children }: PropsWithChildren) {
         className="transition-[margin] duration-200"
         style={{ marginLeft: leftOffset }}
       >
-        <div className="mx-auto max-w-6xl px-4 py-6">
+        <div className="max-w-6xl px-4 py-6">
           {children}
         </div>
       </div>

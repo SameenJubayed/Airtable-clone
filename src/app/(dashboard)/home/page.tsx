@@ -15,7 +15,7 @@ export default async function HomePage() {
   return (
     <>
       <h1 className="mb-4 text-2xl font-semibold">Home</h1>
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-8">
+      <section className="gap-4 mb-8">
         <CreateBaseCard />
       </section>
       <UserBases />
