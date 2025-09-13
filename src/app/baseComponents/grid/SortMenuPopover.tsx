@@ -1,7 +1,7 @@
 // app/baseComponents/grid/SortMenuPopover.tsx
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Portal from "./Portal";
 import {
   useCloseOnOutside,
@@ -21,16 +21,29 @@ type ColumnLite = { id: string; name: string; type: "TEXT" | "NUMBER" };
 type DirUI = "ASC" | "DESC";
 type SortRow = { id: string; fieldId: string; dir: DirUI };
 
-type ServerSort = { columnId: string; type: "TEXT" | "NUMBER"; dir: "asc" | "desc" };
-function isServerSort(x: unknown): x is ServerSort {
-  if (!x || typeof x !== "object") return false;
-  const o = x as Record<string, unknown>;
-  return (
-    typeof o.columnId === "string" &&
-    (o.type === "TEXT" || o.type === "NUMBER") &&
-    (o.dir === "asc" || o.dir === "desc")
-  );
+// Server payload; `type` is optional on read, inferred from columns if missing
+type ServerSort = { columnId: string; dir: "asc" | "desc"; type?: "TEXT" | "NUMBER" };
+
+// normalize server sorts (accept missing type; infer from columns)
+function normalizeServerSort(s: unknown, columns: ColumnLite[]): ServerSort | null {
+  if (!s || typeof s !== "object") return null;
+  const o = s as Record<string, unknown>;
+  const columnId =
+    typeof o.columnId === "string"
+      ? o.columnId
+      : typeof o.fieldId === "string" 
+      ? o.fieldId
+      : null;
+  if (!columnId) return null;
+  const dir: "asc" | "desc" = o.dir === "desc" ? "desc" : "asc";
+  const typeFromServer =
+    o.type === "NUMBER" || o.type === "TEXT" ? o.type : undefined;
+  const type = typeFromServer ?? (columns.find(c => c.id === columnId)?.type ?? "TEXT");
+  return { columnId, dir, type };
 }
+
+// compare only on what the server actually stores
+const compactSorts = (arr: ServerSort[]) => arr.map(s => ({ columnId: s.columnId, dir: s.dir }));
 
 export default function SortMenuPopover({
   open,
@@ -68,18 +81,23 @@ export default function SortMenuPopover({
   const lastPayloadRef = useRef<string>("");
 
   // Load current sorts for this view
-  const viewQ = api.view.get.useQuery(
-    { viewId: viewId ?? "" },
-    { enabled: open && !!viewId }
+  // (Hydrates via listByTable + activeView, mirroring FilterMenuPopover)
+  const viewsQ = api.view.listByTable.useQuery({ tableId }, { enabled: !!tableId && open });
+  const viewList = viewsQ.data;
+  const activeView = useMemo(
+    () => viewList?.find(v => v.id === (viewId ?? "")),
+    [viewList, viewId]
   );
 
   // Initialize rows whenever we open for a (new) view
   useEffect(() => {
-    if (!open || !viewQ.data) return;
+    if (!open || !activeView) return;
 
-    const sortsUnknown = (viewQ.data as { sorts?: unknown } | undefined)?.sorts;
+    const sortsUnknown = (activeView as { sorts?: unknown } | undefined)?.sorts;
     const current: ServerSort[] = Array.isArray(sortsUnknown)
-      ? (sortsUnknown as unknown[]).filter(isServerSort)
+      ? (sortsUnknown as unknown[])
+          .map(s => normalizeServerSort(s, columns))
+          .filter((x): x is ServerSort => !!x)
       : [];
 
     // Hydrate UI rows
@@ -92,10 +110,8 @@ export default function SortMenuPopover({
     );
 
     // Prime the "last sent" snapshot so opening the menu doesn't immediately re-save
-    lastPayloadRef.current = JSON.stringify(
-      current.map((s) => ({ columnId: s.columnId, type: s.type, dir: s.dir }))
-    );
-  }, [open, viewQ.data]);
+    lastPayloadRef.current = JSON.stringify(compactSorts(current));
+  }, [open, activeView, columns]);
 
   // Helpers
   const fieldById = (id: string | undefined) => columns.find((c) => c.id === id);
@@ -108,27 +124,27 @@ export default function SortMenuPopover({
       const col = columns.find((c) => c.id === r.fieldId);
       return {
         columnId: r.fieldId,
-        type: col?.type ?? "TEXT",
         dir: r.dir === "ASC" ? "asc" : "desc",
+        // keep type for client semantics; server may ignore it
+        type: col?.type ?? "TEXT",
       };
     });
   }, [rows, columns]);
 
   const updateConfig = api.view.updateConfig.useMutation({
-    onSuccess: () => {
-      if (!viewId) return;
+    onSuccess: async (updated) => {
+      if (!updated?.id) return;
 
       // refresh rows in the grid
-      utils.row.list.setInfiniteData({ tableId, viewId, take: pageTake }, undefined);
-      void utils.row.list.invalidate({ tableId, viewId, take: pageTake });
+      utils.row.list.setInfiniteData({ tableId, viewId: updated.id, take: pageTake }, undefined);
+      await utils.row.list.invalidate({ tableId, viewId: updated.id, take: pageTake });
 
-      // Keep caches in sync with what we just saved
-      const payload = rowsToPayload();
-      utils.view.get.setData({ viewId }, (old) =>
-        old ? { ...old, sorts: payload } : old
+      // Keep caches in sync with what we just saved (use server result, like Filter)
+      utils.view.get.setData({ viewId: updated.id }, (old) =>
+        old ? { ...old, sorts: updated.sorts } : old
       );
       utils.view.listByTable.setData({ tableId }, (old) =>
-        old?.map((v) => (v.id === viewId ? { ...v, sorts: payload } : v))
+        old?.map((v) => (v.id === updated.id ? { ...v, sorts: updated.sorts } : v))
       );
     },
   });
@@ -137,7 +153,13 @@ export default function SortMenuPopover({
   const commitSorts = useCallback(
     (payload: ServerSort[]) => {
       if (!viewId) return;
-      updateConfig.mutate({ viewId, sorts: payload });
+      updateConfig.mutate({
+        viewId,
+        sorts: payload.map(s => ({
+          ...s,
+          type: s.type ?? "TEXT"
+        }))
+      });
     },
     [updateConfig, viewId]
   );
@@ -148,17 +170,31 @@ export default function SortMenuPopover({
     if (!autoSort || !viewId) return;
 
     const payloadArr = rowsToPayload(); 
-    const payloadStr = JSON.stringify(payloadArr);
+    const payloadStr = JSON.stringify(compactSorts(payloadArr));
 
     // Dedup: only send when changed (incl. going to [])
     if (payloadStr === lastPayloadRef.current) return;
 
-    const t = setTimeout(() => {
+    const t = window.setTimeout(() => {
       lastPayloadRef.current = payloadStr;
       commitSorts(payloadArr);   
     }, 200);
 
-    return () => clearTimeout(t);
+    return () => window.clearTimeout(t);
+  }, [open, autoSort, viewId, rowsToPayload, commitSorts]);
+
+  // Flush pending changes on close so quick close doesn't drop a change
+  const prevOpenRef = useRef(open);
+  useEffect(() => {
+    if (prevOpenRef.current && !open && autoSort && viewId) {
+      const payloadArr = rowsToPayload();
+      const payloadStr = JSON.stringify(compactSorts(payloadArr));
+      if (payloadStr !== lastPayloadRef.current) {
+        lastPayloadRef.current = payloadStr;
+        commitSorts(payloadArr);
+      }
+    }
+    prevOpenRef.current = open;
   }, [open, autoSort, viewId, rowsToPayload, commitSorts]);
 
   // ---------- UI: submenu mgmt ----------
@@ -418,7 +454,7 @@ export default function SortMenuPopover({
                         onClick={() => {
                           if (!viewId) return;
                           const payload = rowsToPayload();
-                          lastPayloadRef.current = JSON.stringify(payload); // keep dedup in sync
+                          lastPayloadRef.current = JSON.stringify(compactSorts(payload)); // keep dedup in sync
                           commitSorts(payload);
                           onClose();
                         }}

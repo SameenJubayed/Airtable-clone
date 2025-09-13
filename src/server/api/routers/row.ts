@@ -8,14 +8,12 @@ import { createTRPCRouter, protectedProcedure } from "~/server/api/trpc";
 
 // ---------------- FOR BULK INSERTING (100k holy moly) ----------------
 
-// ---------------- FOR BULK INSERTING (100k holy moly) ----------------
-
 async function runBulkInsertWorker(opts: {
   prisma: PrismaClient;
   jobId: string;
   tableId: string;
-  total: number;          // e.g., 100_000
-  batchSize?: number;     // e.g., 10_000
+  total: number;      
+  batchSize?: number;    
 }) {
   const { prisma, jobId, tableId, total, batchSize = 10_000 } = opts;
 
@@ -33,7 +31,6 @@ async function runBulkInsertWorker(opts: {
     // mark running
     await prisma.bulkJob.update({ where: { id: jobId }, data: { status: "running" } });
 
-    // We DO need columns now: we generate faker data based on each column's type.
     const cols = await prisma.column.findMany({
       where: { tableId },
       select: { id: true, type: true },
@@ -72,7 +69,7 @@ async function runBulkInsertWorker(opts: {
               cellNumberValues.push(null);
             } else {
               // 2-decimal float in a range
-              const n = faker.number.float({ min: 0, max: 100_000, fractionDigits: 2 });
+              const n = faker.number.float({ min: 0, max: 10_000, fractionDigits: 2 });
               cellTextValues.push(null);
               cellNumberValues.push(n);
             }
@@ -125,7 +122,6 @@ async function runBulkInsertWorker(opts: {
     });
   }
 }
-
 
 const ViewFilterZ = z.object({
   columnId: z.string().cuid(),
